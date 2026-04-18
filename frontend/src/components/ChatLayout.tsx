@@ -33,7 +33,6 @@ interface Conversation {
 
 interface ChatLayoutProps {
     children: ReactNode;
-    children: ReactNode;
 }
 
 const MIN_WIDTH = 60;
