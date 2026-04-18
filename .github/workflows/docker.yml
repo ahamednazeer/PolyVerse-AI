@@ -22,7 +22,7 @@ jobs:
         id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ahamednazeer/traffic_detection
+          images: ahamednazeer/polyverse-ai
           tags: |
             type=raw,value=be-latest,enable={{is_default_branch}}
             type=sha,prefix=be-
@@ -40,7 +40,7 @@ jobs:
         id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ahamednazeer/traffic_detection
+          images: ahamednazeer/polyverse-ai
           tags: |
             type=raw,value=fe-latest,enable={{is_default_branch}}
             type=sha,prefix=fe-
