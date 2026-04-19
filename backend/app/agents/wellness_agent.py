@@ -1,4 +1,5 @@
 """Wellness Agent — Clinical-grade mental health support with safety layers and escalation protocols."""
+import asyncio
 import re
 import logging
 from typing import AsyncGenerator
@@ -8,8 +9,11 @@ from enum import Enum
 from app.agents.base_agent import BaseAgent, AgentInput, AgentOutput
 from app.llm.groq_client import groq_client
 from app.llm.prompt_manager import get_system_prompt, build_messages
+from app.services.model_downloads import ensure_hf_snapshot
 
 logger = logging.getLogger("polyverse.agents.wellness")
+_emotion_classifier = None
+_sentiment_classifier = None
 
 
 class RiskLevel(str, Enum):
@@ -113,6 +117,66 @@ class WellnessAgent(BaseAgent):
     max_retries = 2
     timeout_seconds = 45.0
 
+    def get_warmup_statuses(self, agent_input: AgentInput) -> list[str]:
+        statuses = []
+        if _emotion_classifier is None:
+            statuses.append("Preparing wellness emotion model. First use may download model files.")
+        if _sentiment_classifier is None:
+            statuses.append("Preparing wellness sentiment model. First use may download model files.")
+        return statuses
+
+    async def prepare_models(self, agent_input: AgentInput, progress_callback=None):
+        global _emotion_classifier, _sentiment_classifier
+        from app.config import settings
+        from transformers import pipeline
+
+        if _emotion_classifier is None:
+            def _load_emotion():
+                local_path = ensure_hf_snapshot(settings.EMOTION_MODEL, progress_callback)
+                return pipeline("text-classification", model=local_path, top_k=3)
+
+            _emotion_classifier = await asyncio.to_thread(_load_emotion)
+
+        if _sentiment_classifier is None:
+            def _load_sentiment():
+                local_path = ensure_hf_snapshot(settings.SENTIMENT_MODEL, progress_callback)
+                return pipeline("sentiment-analysis", model=local_path)
+
+            _sentiment_classifier = await asyncio.to_thread(_load_sentiment)
+
+    def _get_emotion_classifier(self):
+        global _emotion_classifier
+        if _emotion_classifier is None:
+            try:
+                from transformers import pipeline
+                from app.config import settings
+
+                _emotion_classifier = pipeline(
+                    "text-classification",
+                    model=settings.EMOTION_MODEL,
+                    top_k=3,
+                )
+            except Exception as e:
+                logger.warning(f"Emotion model unavailable, using heuristics: {e}")
+                _emotion_classifier = False
+        return _emotion_classifier or None
+
+    def _get_sentiment_classifier(self):
+        global _sentiment_classifier
+        if _sentiment_classifier is None:
+            try:
+                from transformers import pipeline
+                from app.config import settings
+
+                _sentiment_classifier = pipeline(
+                    "sentiment-analysis",
+                    model=settings.SENTIMENT_MODEL,
+                )
+            except Exception as e:
+                logger.warning(f"Sentiment model unavailable, using heuristics: {e}")
+                _sentiment_classifier = False
+        return _sentiment_classifier or None
+
     def _assess_safety(self, message: str) -> SafetyAssessment:
         """Multi-layer safety assessment with emotion detection."""
         text = message.lower()
@@ -138,6 +202,18 @@ class WellnessAgent(BaseAgent):
             if any(w in text for w in words):
                 detected_emotions.append(emotion)
 
+        emotion_classifier = self._get_emotion_classifier()
+        if emotion_classifier:
+            try:
+                emotion_results = emotion_classifier(message[:512])
+                top_results = emotion_results[0] if emotion_results and isinstance(emotion_results[0], list) else emotion_results
+                for result in top_results[:3]:
+                    label = str(result.get("label", "")).lower()
+                    if label and label not in detected_emotions:
+                        detected_emotions.append(label)
+            except Exception as e:
+                logger.debug(f"Emotion inference failed, continuing with heuristics: {e}")
+
         # Sentiment scoring
         neg_score = sum(1 for words in [
             EMOTION_LEXICON["sadness"], EMOTION_LEXICON["anxiety"],
@@ -147,12 +223,30 @@ class WellnessAgent(BaseAgent):
 
         pos_score = sum(1 for w in EMOTION_LEXICON["hope"] if w in text)
 
-        if neg_score > pos_score:
-            sentiment, intensity = "negative", min(neg_score / 5, 1.0)
-        elif pos_score > 0:
-            sentiment, intensity = "positive", min(pos_score / 3, 1.0)
-        else:
-            sentiment, intensity = "neutral", 0.3
+        sentiment_classifier = self._get_sentiment_classifier()
+        sentiment = "neutral"
+        intensity = 0.3
+
+        if sentiment_classifier:
+            try:
+                result = sentiment_classifier(message[:512])[0]
+                label = str(result.get("label", "")).lower()
+                score = float(result.get("score", 0.3))
+                if "neg" in label:
+                    sentiment = "negative"
+                elif "pos" in label:
+                    sentiment = "positive"
+                else:
+                    sentiment = "neutral"
+                intensity = min(max(score, 0.0), 1.0)
+            except Exception as e:
+                logger.debug(f"Sentiment inference failed, continuing with heuristics: {e}")
+
+        if sentiment == "neutral":
+            if neg_score > pos_score:
+                sentiment, intensity = "negative", min(max(intensity, neg_score / 5), 1.0)
+            elif pos_score > 0:
+                sentiment, intensity = "positive", min(max(intensity, pos_score / 3), 1.0)
 
         return SafetyAssessment(
             risk_level=risk,

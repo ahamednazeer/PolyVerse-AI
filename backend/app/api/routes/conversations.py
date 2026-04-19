@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from app.db.mongodb import get_db
 from app.models.schemas import ConversationCreate, ConversationUpdate, ConversationResponse, MessageResponse
@@ -56,8 +57,8 @@ async def get_conversation(
             "_id": ObjectId(conversation_id),
             "user_id": user_id,
         })
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid conversation ID")
+    except InvalidId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid conversation ID format")
 
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
@@ -110,10 +111,13 @@ async def update_conversation(
     if data.title is not None:
         update_fields["title"] = data.title
 
-    result = await db.conversations.update_one(
-        {"_id": ObjectId(conversation_id), "user_id": user_id},
-        {"$set": update_fields},
-    )
+    try:
+        result = await db.conversations.update_one(
+            {"_id": ObjectId(conversation_id), "user_id": user_id},
+            {"$set": update_fields},
+        )
+    except InvalidId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid conversation ID format")
 
     if result.matched_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
@@ -129,9 +133,12 @@ async def delete_conversation(
     db = get_db()
     user_id = current_user["_id"]
 
-    result = await db.conversations.delete_one(
-        {"_id": ObjectId(conversation_id), "user_id": user_id}
-    )
+    try:
+        result = await db.conversations.delete_one(
+            {"_id": ObjectId(conversation_id), "user_id": user_id}
+        )
+    except InvalidId:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid conversation ID format")
     if result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 

@@ -7,9 +7,13 @@ import ChatMessages, { Message } from '@/components/ChatMessages';
 import ChatInput from '@/components/ChatInput';
 import { api } from '@/lib/api';
 import { Robot } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { useChatStore } from '@/store/useChatStore';
 
 export default function ConversationPage() {
     const params = useParams();
+    const router = useRouter();
     const conversationId = params.id as string;
 
     const [messages, setMessages] = useState<Message[]>([]);
@@ -17,6 +21,16 @@ export default function ConversationPage() {
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [streamingContent, setStreamingContent] = useState('');
     const [streamingAgent, setStreamingAgent] = useState('');
+    const [responseVoiceEnabled, setResponseVoiceEnabled] = useState(false);
+    const [activeLanguage, setActiveLanguage] = useState('en');
+    const modelToastIdRef = React.useRef<string | number | null>(null);
+
+    const stopModelProgressToast = React.useCallback(() => {
+        if (modelToastIdRef.current !== null) {
+            toast.dismiss(modelToastIdRef.current);
+            modelToastIdRef.current = null;
+        }
+    }, []);
 
     // Load conversation history
     useEffect(() => {
@@ -36,8 +50,10 @@ export default function ConversationPage() {
                     })),
                 }));
                 setMessages(loadedMessages);
-            } catch (err) {
+            } catch (err: any) {
                 console.error('Failed to load conversation:', err);
+                toast.error(err.message || 'Unable to load this conversation.');
+                router.push('/chat');
             } finally {
                 setLoadingHistory(false);
             }
@@ -49,6 +65,7 @@ export default function ConversationPage() {
         message: string,
         fileIds?: string[],
         files?: { id: string; name: string; type: string; url?: string }[],
+        options?: { language: string; voice: boolean; responseVoice: boolean },
     ) => {
         const userMsg: Message = {
             id: `user-${Date.now()}`,
@@ -61,6 +78,8 @@ export default function ConversationPage() {
         setIsLoading(true);
         setStreamingContent('');
         setStreamingAgent('');
+        setResponseVoiceEnabled(Boolean(options?.responseVoice));
+        setActiveLanguage(options?.language || 'en');
 
         let fullContent = '';
         let agentName = '';
@@ -70,8 +89,9 @@ export default function ConversationPage() {
                 message,
                 conversationId,
                 fileIds,
-                'en',
-                false,
+                options?.language || 'en',
+                options?.voice || false,
+                options?.responseVoice || false,
                 (event) => {
                     switch (event.type) {
                         case 'agent':
@@ -82,7 +102,19 @@ export default function ConversationPage() {
                             fullContent += event.content;
                             setStreamingContent(fullContent);
                             break;
+                        case 'status':
+                            if (event.status === 'loading_model' && event.message) {
+                                modelToastIdRef.current = toast.loading(event.message, {
+                                    id: modelToastIdRef.current ?? undefined,
+                                });
+                            } else if (event.status === 'loading_model_progress') {
+                                modelToastIdRef.current = toast.loading('Downloading model. Please wait.', {
+                                    id: modelToastIdRef.current ?? undefined,
+                                });
+                            }
+                            break;
                         case 'done':
+                            stopModelProgressToast();
                             setStreamingContent('');
                             setMessages(prev => [...prev, {
                                 id: `ai-${Date.now()}`,
@@ -92,13 +124,16 @@ export default function ConversationPage() {
                                 timestamp: new Date(),
                             }]);
                             setIsLoading(false);
+                            useChatStore.getState().fetchConversations();
                             break;
                         case 'error':
+                            stopModelProgressToast();
                             setStreamingContent('');
+                            toast.error('The agent encountered an issue.');
                             setMessages(prev => [...prev, {
                                 id: `error-${Date.now()}`,
                                 role: 'assistant',
-                                content: event.content || 'An error occurred.',
+                                content: event.content || 'I encountered an error processing your request. Please try again.',
                                 timestamp: new Date(),
                             }]);
                             setIsLoading(false);
@@ -107,16 +142,18 @@ export default function ConversationPage() {
                 }
             );
         } catch (err: any) {
+            stopModelProgressToast();
             setStreamingContent('');
+            toast.error('Network connection failed.');
             setMessages(prev => [...prev, {
                 id: `error-${Date.now()}`,
                 role: 'assistant',
-                content: err.message || 'Failed to connect.',
+                content: 'Network connection failed. Please check your internet and server connection, then try again.',
                 timestamp: new Date(),
             }]);
             setIsLoading(false);
         }
-    }, [conversationId]);
+    }, [conversationId, stopModelProgressToast]);
 
     if (loadingHistory) {
         return (
@@ -130,12 +167,14 @@ export default function ConversationPage() {
     }
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex h-full min-h-0 flex-col">
             <ChatMessages
                 messages={messages}
                 isLoading={isLoading}
                 streamingContent={streamingContent}
                 streamingAgent={streamingAgent}
+                enableVoiceReplies={responseVoiceEnabled}
+                speechLanguage={activeLanguage}
             />
             <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
         </div>

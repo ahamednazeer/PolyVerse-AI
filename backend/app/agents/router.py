@@ -235,7 +235,13 @@ class AgentRouter:
 
     # ===== Multi-agent chain builder =====
 
-    def _build_chain(self, decision: RoutingDecision, has_image: bool) -> RoutingDecision:
+    def _build_chain(
+        self,
+        decision: RoutingDecision,
+        has_image: bool,
+        has_voice: bool = False,
+        has_document: bool = False,
+    ) -> RoutingDecision:
         """Build multi-agent chain for complex queries."""
 
         # Image + non-English → Vision → Multilingual → Target
@@ -245,6 +251,18 @@ class AgentRouter:
         # Image + teaching question → Vision → Teaching
         if has_image and decision.primary_agent == "teaching":
             decision.chain = ["vision", "teaching"]
+
+        # Voice + multilingual → Vision transcription first, then multilingual response
+        if has_voice and decision.primary_agent == "multilingual":
+            decision.chain = ["vision", "multilingual"]
+
+        # Voice + teaching/coding/wellness → Vision transcription first, then target agent
+        if has_voice and decision.primary_agent in {"teaching", "coding", "wellness"}:
+            decision.chain = ["vision", decision.primary_agent]
+
+        # Document + multilingual → document retrieval plus multilingual response
+        if has_document and decision.primary_agent == "multilingual":
+            decision.chain = ["teaching", "multilingual"]
 
         return decision
 
@@ -271,7 +289,12 @@ class AgentRouter:
             decision = await self._llm_classify(message)
 
         # Build multi-agent chain if needed
-        decision = self._build_chain(decision, has_image)
+        decision = self._build_chain(
+            decision,
+            has_image=has_image,
+            has_voice=has_voice,
+            has_document=has_document,
+        )
 
         latency = (time.monotonic() - start) * 1000
         logger.info(

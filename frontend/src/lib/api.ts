@@ -1,27 +1,27 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+export interface UserPreferences {
+    preferred_language: string;
+    academic_level: string;
+    course: string;
+    syllabus_topics: string[];
+    learning_goals: string[];
+    response_style: string;
+}
+
 class ApiClient {
     private token: string | null = null;
 
     setToken(token: string) {
         this.token = token;
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('token', token);
-        }
     }
 
     getToken() {
-        if (!this.token && typeof window !== 'undefined') {
-            this.token = localStorage.getItem('token');
-        }
         return this.token;
     }
 
     clearToken() {
         this.token = null;
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-        }
     }
 
     private async request(endpoint: string, options: RequestInit = {}) {
@@ -38,6 +38,7 @@ class ApiClient {
         const response = await fetch(`${API_URL}/api${endpoint}`, {
             ...options,
             headers,
+            credentials: 'include',
             cache: 'no-store',
         });
 
@@ -51,10 +52,23 @@ class ApiClient {
 
     // ============ Auth ============
 
-    async register(name: string, email: string, password: string) {
+    async register(name: string, email: string, password: string, preferences?: Partial<UserPreferences>) {
         const data = await this.request('/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ name, email, password }),
+            body: JSON.stringify({
+                name,
+                email,
+                password,
+                preferences: {
+                    preferred_language: 'en',
+                    academic_level: '',
+                    course: '',
+                    syllabus_topics: [],
+                    learning_goals: [],
+                    response_style: 'balanced',
+                    ...(preferences || {}),
+                },
+            }),
         });
         this.setToken(data.access_token);
         return data;
@@ -71,6 +85,18 @@ class ApiClient {
 
     async getMe() {
         return this.request('/auth/me');
+    }
+
+    async updatePreferences(preferences: Partial<UserPreferences>) {
+        return this.request('/auth/me/preferences', {
+            method: 'PUT',
+            body: JSON.stringify(preferences),
+        });
+    }
+
+    async logout() {
+        this.clearToken();
+        return this.request('/auth/logout', { method: 'POST' });
     }
 
     // ============ Conversations ============
@@ -111,6 +137,7 @@ class ApiClient {
         files?: string[],
         language: string = 'en',
         voice: boolean = false,
+        responseVoice: boolean = false,
         onEvent?: (event: { type: string; [key: string]: any }) => void,
     ): Promise<void> {
         const token = this.getToken();
@@ -124,12 +151,14 @@ class ApiClient {
         const response = await fetch(`${API_URL}/api/chat`, {
             method: 'POST',
             headers,
+            credentials: 'include',
             body: JSON.stringify({
                 message,
                 conversation_id: conversationId || null,
                 files: files || null,
                 language,
                 voice,
+                response_voice: responseVoice,
             }),
         });
 
@@ -190,6 +219,7 @@ class ApiClient {
         const response = await fetch(`${API_URL}/api/files/upload`, {
             method: 'POST',
             headers,
+            credentials: 'include',
             body: formData,
         });
 
@@ -217,6 +247,7 @@ class ApiClient {
         const response = await fetch(`${API_URL}/api/files/transcribe`, {
             method: 'POST',
             headers,
+            credentials: 'include',
             body: formData,
         });
 

@@ -4,16 +4,35 @@ from typing import Optional
 from pydantic import BaseModel, Field, EmailStr
 
 
+class UserPreferences(BaseModel):
+    preferred_language: str = "en"
+    academic_level: str = ""
+    course: str = ""
+    syllabus_topics: list[str] = []
+    learning_goals: list[str] = []
+    response_style: str = "balanced"
+
+
 # ===== User =====
 class UserCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=6)
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
 
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class UserPreferencesUpdate(BaseModel):
+    preferred_language: Optional[str] = None
+    academic_level: Optional[str] = None
+    course: Optional[str] = None
+    syllabus_topics: Optional[list[str]] = None
+    learning_goals: Optional[list[str]] = None
+    response_style: Optional[str] = None
 
 
 class UserResponse(BaseModel):
@@ -22,6 +41,7 @@ class UserResponse(BaseModel):
     email: str
     role: str = "user"
     language: str = "en"
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
     created_at: datetime
 
     class Config:
@@ -78,6 +98,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     files: Optional[list[str]] = None
     voice: bool = False
+    response_voice: bool = False
     language: str = "en"
 
 

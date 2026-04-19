@@ -10,6 +10,9 @@ export default function RegisterPage() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [course, setCourse] = useState('');
+    const [academicLevel, setAcademicLevel] = useState('');
+    const [preferredLanguage, setPreferredLanguage] = useState('en');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -19,7 +22,11 @@ export default function RegisterPage() {
         setLoading(true);
 
         try {
-            await api.register(name, email, password);
+            await api.register(name, email, password, {
+                course,
+                academic_level: academicLevel,
+                preferred_language: preferredLanguage,
+            });
             router.push('/chat');
         } catch (err: any) {
             setError(err.message || 'Registration failed.');
@@ -99,6 +106,57 @@ export default function RegisterPage() {
                                     disabled={loading}
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-slate-400 text-xs uppercase tracking-wider mb-2 font-mono">
+                                Course
+                            </label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                                <input
+                                    type="text"
+                                    value={course}
+                                    onChange={(e) => setCourse(e.target.value)}
+                                    className="w-full bg-slate-950 border-slate-700 text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-sm placeholder:text-slate-600 font-mono text-sm pl-10 pr-3 py-2.5 border outline-none"
+                                    placeholder="B.Tech CSE / Data Structures"
+                                    disabled={loading}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-slate-400 text-xs uppercase tracking-wider mb-2 font-mono">
+                                Academic Level
+                            </label>
+                            <input
+                                type="text"
+                                value={academicLevel}
+                                onChange={(e) => setAcademicLevel(e.target.value)}
+                                className="w-full bg-slate-950 border-slate-700 text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-sm placeholder:text-slate-600 font-mono text-sm px-3 py-2.5 border outline-none"
+                                placeholder="1st year / Intermediate / Graduate"
+                                disabled={loading}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-slate-400 text-xs uppercase tracking-wider mb-2 font-mono">
+                                Preferred Language
+                            </label>
+                            <select
+                                value={preferredLanguage}
+                                onChange={(e) => setPreferredLanguage(e.target.value)}
+                                className="w-full bg-slate-950 border-slate-700 text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-sm font-mono text-sm px-3 py-2.5 border outline-none"
+                                disabled={loading}
+                            >
+                                <option value="ta">Tamil</option>
+                                <option value="ur">Urdu</option>
+                                <option value="en">English</option>
+                                <option value="hi">Hindi</option>
+                                <option value="te">Telugu</option>
+                                <option value="ml">Malayalam</option>
+                                <option value="kn">Kannada</option>
+                            </select>
                         </div>
 
                         <div>

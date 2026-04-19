@@ -50,10 +50,12 @@ class Settings(BaseSettings):
     OCR_LANGUAGES: str = "en,hi,ta,te,ml,kn"
 
     # --- Whisper ---
-    WHISPER_MODEL: str = "small"
+    WHISPER_MODEL: str = "medium"
 
     # --- IndicBERT ---
     INDICBERT_MODEL: str = "ai4bharat/indic-bert"
+    EMOTION_MODEL: str = "j-hartmann/emotion-english-distilroberta-base"
+    SENTIMENT_MODEL: str = "cardiffnlp/twitter-roberta-base-sentiment-latest"
 
     @property
     def cors_origins_list(self) -> list[str]:

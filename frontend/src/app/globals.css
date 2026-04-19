@@ -378,25 +378,25 @@
 
 /* Markdown styling for chat */
 .chat-markdown h1 {
-  @apply text-[15px] font-semibold text-white mt-3 mb-1;
+  @apply mb-4 mt-8 text-[2rem] font-semibold leading-tight text-white;
 }
 .chat-markdown h1:first-child {
   @apply mt-0;
 }
 .chat-markdown h2 {
-  @apply text-[14.5px] font-semibold text-white mt-2.5 mb-1;
+  @apply mb-3 mt-8 text-[1.7rem] font-semibold leading-tight text-white;
 }
 .chat-markdown h2:first-child {
   @apply mt-0;
 }
 .chat-markdown h3 {
-  @apply text-[14px] font-semibold text-white mt-2 mb-0.5;
+  @apply mb-2 mt-6 text-[1.3rem] font-semibold leading-snug text-white;
 }
 .chat-markdown h3:first-child {
   @apply mt-0;
 }
 .chat-markdown p {
-  @apply my-1 text-slate-200;
+  @apply my-4 text-[15px] leading-[1.85] text-slate-200;
 }
 .chat-markdown p:first-child {
   @apply mt-0;
@@ -405,32 +405,65 @@
   @apply mb-0;
 }
 .chat-markdown ul {
-  @apply my-1 pl-5 space-y-0.5 list-disc;
+  @apply my-4 list-disc space-y-2 pl-6;
 }
 .chat-markdown ol {
-  @apply my-1 pl-5 space-y-0.5 list-decimal;
+  @apply my-4 list-decimal space-y-2 pl-6;
 }
 .chat-markdown li {
-  @apply text-slate-200 pl-0.5;
+  @apply pl-1 text-[15px] leading-[1.8] text-slate-200;
 }
 .chat-markdown strong {
   @apply font-semibold text-white;
 }
 .chat-markdown code {
-  @apply px-1 py-0.5 bg-slate-700/60 rounded text-[12px] font-mono text-slate-100;
+  @apply rounded-md border border-white/6 bg-white/10 px-1.5 py-1 text-[0.92em] font-mono text-slate-100;
 }
 .chat-markdown pre {
-  @apply my-2 p-3 bg-slate-900 rounded-lg overflow-x-auto text-[12px] font-mono border border-slate-700/50;
+  @apply my-5 overflow-x-auto rounded-2xl border border-slate-700/60 bg-slate-900 p-3 text-[12px] font-mono;
 }
 .chat-markdown pre code {
   @apply bg-transparent p-0 text-slate-100;
 }
 .chat-markdown blockquote {
-  @apply my-1.5 pl-3 border-l-2 border-slate-600 text-slate-300 italic;
+  @apply my-5 border-l-2 border-slate-500 pl-4 text-slate-300 italic;
 }
 .chat-markdown a {
   @apply text-blue-400 hover:text-blue-300 underline underline-offset-2;
 }
 .chat-markdown hr {
-  @apply my-2 border-slate-700;
+  @apply my-8 border-slate-800;
+}
+.chat-markdown table {
+  @apply my-5 w-full overflow-hidden rounded-xl border border-slate-700/60 text-left text-sm;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.chat-markdown thead {
+  @apply bg-slate-800/80;
+}
+.chat-markdown th {
+  @apply border-b border-slate-700/60 px-4 py-3 font-semibold text-slate-100;
+}
+.chat-markdown td {
+  @apply border-b border-slate-800 px-4 py-3 text-slate-300;
+}
+.chat-markdown tr:last-child td {
+  @apply border-b-0;
+}
+
+/* ChatGPT-style pulsing inline cursor */
+.streaming-active > *:last-child::after {
+  content: '●';
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+  line-height: 1;
+  vertical-align: baseline;
+  animation: chat-blink 1s step-end infinite;
+}
+
+@keyframes chat-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }

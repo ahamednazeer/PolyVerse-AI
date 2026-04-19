@@ -167,6 +167,19 @@ class BaseAgent(ABC):
         if file_contents:
             agent_input.message += "\n\n" + "\n\n".join(file_contents)
 
+    def _inject_personalization_context(self, agent_input: AgentInput):
+        """Inject durable user preferences and memory context."""
+        personalization_context = agent_input.metadata.get("personalization_context", "").strip()
+        if not personalization_context:
+            return
+
+        agent_input.message = (
+            "[User personalization context]\n"
+            f"{personalization_context}\n\n"
+            "[Current request]\n"
+            f"{agent_input.message}"
+        )
+
     async def invoke(self, agent_input: AgentInput) -> AgentOutput:
         """Execute agent with retry logic, metrics, and error handling."""
         self.status = AgentStatus.PROCESSING
@@ -181,6 +194,7 @@ class BaseAgent(ABC):
                 )
 
                 # Read attached files
+                self._inject_personalization_context(agent_input)
                 await self._inject_file_contents(agent_input)
                 # Pre-processing hook
                 processed_input = await self.preprocess(agent_input)
@@ -237,6 +251,7 @@ class BaseAgent(ABC):
         start = time.monotonic()
 
         try:
+            self._inject_personalization_context(agent_input)
             await self._inject_file_contents(agent_input)
             processed_input = await self.preprocess(agent_input)
             token_count = 0
@@ -266,6 +281,14 @@ class BaseAgent(ABC):
     async def postprocess(self, output: AgentOutput, agent_input: AgentInput) -> AgentOutput:
         """Override to transform output after processing. Default: pass-through."""
         return output
+
+    def get_warmup_statuses(self, agent_input: AgentInput) -> list[str]:
+        """Optional user-facing status messages before lazy model initialization."""
+        return []
+
+    async def prepare_models(self, agent_input: AgentInput, progress_callback=None):
+        """Optional explicit model preparation hook with progress callback."""
+        return None
 
     # --- Abstract methods ---
 

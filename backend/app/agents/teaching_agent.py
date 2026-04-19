@@ -154,6 +154,17 @@ class TeachingAgent(BaseAgent):
         agent_input.metadata["rag_context"] = context
         agent_input.metadata["citations"] = citations
         agent_input.metadata["difficulty"] = self._detect_difficulty(agent_input)
+        preferences = agent_input.metadata.get("user_preferences", {})
+        personalization_notes = []
+        if preferences.get("academic_level"):
+            personalization_notes.append(f"Academic level: {preferences['academic_level']}")
+        if preferences.get("course"):
+            personalization_notes.append(f"Course context: {preferences['course']}")
+        if preferences.get("syllabus_topics"):
+            personalization_notes.append(f"Prioritize syllabus topics: {', '.join(preferences['syllabus_topics'])}")
+        if preferences.get("learning_goals"):
+            personalization_notes.append(f"User learning goals: {', '.join(preferences['learning_goals'])}")
+        agent_input.metadata["teaching_personalization"] = "\n".join(personalization_notes)
         return agent_input
 
     async def process(self, agent_input: AgentInput) -> AgentOutput:
@@ -161,8 +172,11 @@ class TeachingAgent(BaseAgent):
         difficulty = agent_input.metadata.get("difficulty", "intermediate")
         context = agent_input.metadata.get("rag_context")
         citations = agent_input.metadata.get("citations", [])
+        personalization = agent_input.metadata.get("teaching_personalization", "")
 
         enhanced_prompt = f"{system_prompt}\n\n{DIFFICULTY_SYSTEM}\n\n[Student Level: {difficulty}]"
+        if personalization:
+            enhanced_prompt += f"\n\n[Personalization]\n{personalization}"
         if context:
             enhanced_prompt += f"\n\n{CITATION_INSTRUCTION}"
 
@@ -184,8 +198,11 @@ class TeachingAgent(BaseAgent):
         difficulty = agent_input.metadata.get("difficulty", "intermediate")
         context = agent_input.metadata.get("rag_context")
         citations = agent_input.metadata.get("citations", [])
+        personalization = agent_input.metadata.get("teaching_personalization", "")
 
         enhanced_prompt = f"{system_prompt}\n\n{DIFFICULTY_SYSTEM}\n\n[Student Level: {difficulty}]"
+        if personalization:
+            enhanced_prompt += f"\n\n[Personalization]\n{personalization}"
         if context:
             enhanced_prompt += f"\n\n{CITATION_INSTRUCTION}"
 

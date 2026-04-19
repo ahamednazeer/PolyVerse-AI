@@ -33,6 +33,7 @@ openai-whisper==20250625
 Pillow==11.2.1
 
 # NLP
+transformers==4.52.4
 langdetect==1.0.9
 textblob==0.18.0.post0
 nltk==3.9.1

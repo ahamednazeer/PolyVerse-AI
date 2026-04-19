@@ -18,6 +18,8 @@ async def connect_db():
     await _db.conversations.create_index([("user_id", 1), ("updated_at", -1)])
     await _db.messages.create_index("conversation_id")
     await _db.messages.create_index([("conversation_id", 1), ("created_at", 1)])
+    await _db.user_memories.create_index([("user_id", 1), ("key", 1)], unique=True)
+    await _db.user_memories.create_index([("user_id", 1), ("updated_at", -1)])
     print(f"✅ Connected to MongoDB: {settings.DATABASE_NAME}")
 
 

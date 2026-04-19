@@ -1,4 +1,5 @@
 """Vision Agent — Multi-modal pipeline with OCR, image understanding, and speech-to-text."""
+import asyncio
 import os
 import base64
 import logging
@@ -7,6 +8,7 @@ from typing import AsyncGenerator
 from app.agents.base_agent import BaseAgent, AgentInput, AgentOutput
 from app.llm.groq_client import groq_client
 from app.llm.prompt_manager import get_system_prompt, build_messages
+from app.services.model_downloads import ensure_whisper_model_file
 
 logger = logging.getLogger("polyverse.agents.vision")
 
@@ -36,19 +38,44 @@ class VisionAgent(BaseAgent):
                 logger.error(f"EasyOCR init error: {e}")
         return self._ocr_reader
 
+    def get_warmup_statuses(self, agent_input: AgentInput) -> list[str]:
+        statuses = []
+        has_image = any((file_info.get("type", "") or "").startswith("image/") for file_info in agent_input.files)
+        has_audio = any((file_info.get("type", "") or "").startswith("audio/") for file_info in agent_input.files)
+
+        if has_image and self._ocr_reader is None:
+            statuses.append("Preparing vision OCR model. First use may download model files.")
+        if has_audio and self._whisper_model is None:
+            statuses.append("Preparing voice transcription model. First use may download model files.")
+
+        return statuses
+
     def _get_whisper_model(self):
         """Lazy-load Whisper model."""
         if self._whisper_model is None:
             try:
                 import whisper
                 from app.config import settings
-                self._whisper_model = whisper.load_model(settings.WHISPER_MODEL)
+                model_path = ensure_whisper_model_file(settings.WHISPER_MODEL)
+                self._whisper_model = whisper.load_model(model_path)
                 logger.info(f"Whisper model loaded: {settings.WHISPER_MODEL}")
             except ImportError:
                 logger.warning("openai-whisper not installed — STT unavailable")
             except Exception as e:
                 logger.error(f"Whisper init error: {e}")
         return self._whisper_model
+
+    async def prepare_models(self, agent_input: AgentInput, progress_callback=None):
+        has_audio = any((file_info.get("type", "") or "").startswith("audio/") for file_info in agent_input.files)
+        if has_audio and self._whisper_model is None:
+            import whisper
+            from app.config import settings
+
+            def _load_whisper():
+                model_path = ensure_whisper_model_file(settings.WHISPER_MODEL, progress_callback)
+                return whisper.load_model(model_path)
+
+            self._whisper_model = await asyncio.to_thread(_load_whisper)
 
     async def _run_ocr(self, image_path: str) -> dict:
         """Extract text from image with confidence scores."""
@@ -184,6 +211,8 @@ class VisionAgent(BaseAgent):
         if vision_analysis:
             full_context += vision_analysis
 
+        agent_input.metadata["vision_analysis"] = vision_analysis.strip()
+
         if full_context:
             return f"{agent_input.message}\n\n---\n{full_context}"
 
@@ -192,6 +221,7 @@ class VisionAgent(BaseAgent):
     async def process(self, agent_input: AgentInput) -> AgentOutput:
         system_prompt = get_system_prompt("vision")
         enhanced_msg = await self._build_enhanced_message(agent_input)
+        vision_analysis = agent_input.metadata.get("vision_analysis", "")
 
         messages = build_messages(system_prompt, enhanced_msg, agent_input.history)
         content = await groq_client.chat(messages)
@@ -204,6 +234,7 @@ class VisionAgent(BaseAgent):
                 "ocr_count": len(agent_input.metadata.get("ocr_results", [])),
                 "stt_count": len(agent_input.metadata.get("stt_results", [])),
                 "vision_used": bool(vision_analysis),
+                "multimodal_context": bool(agent_input.metadata.get("multimodal_context")),
             },
         )
 

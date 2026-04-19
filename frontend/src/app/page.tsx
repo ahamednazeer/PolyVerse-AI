@@ -11,44 +11,6 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [checkingAuth, setCheckingAuth] = useState(true);
-
-    // Check if user is already authenticated on mount
-    useEffect(() => {
-        async function checkExistingAuth() {
-            try {
-                const token = api.getToken();
-                if (!token) {
-                    setCheckingAuth(false);
-                    return;
-                }
-
-                await api.getMe();
-                router.replace('/chat');
-            } catch {
-                api.clearToken();
-                setCheckingAuth(false);
-            }
-        }
-        checkExistingAuth();
-    }, [router]);
-
-    if (checkingAuth) {
-        return (
-            <div
-                className="min-h-screen flex items-center justify-center bg-cover bg-center relative"
-                style={{
-                    backgroundImage: 'linear-gradient(to bottom right, #0f172a, #1e293b)',
-                }}
-            >
-                <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
-                <div className="relative z-10 text-center space-y-4">
-                    <Robot size={48} className="text-blue-500 animate-pulse mx-auto" />
-                    <div className="text-slate-500 font-mono text-sm animate-pulse">VERIFYING SESSION...</div>
-                </div>
-            </div>
-        );
-    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

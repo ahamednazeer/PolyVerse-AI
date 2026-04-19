@@ -3,22 +3,26 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     PaperPlaneTilt,
-    Microphone,
     Waveform,
     Pulse,
     Paperclip,
     X,
     File as FileIcon,
     Image,
-    Globe,
+    Plus,
+    ArrowUp,
+    SpeakerHigh,
+    SpeakerSlash,
 } from '@phosphor-icons/react';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface ChatInputProps {
     onSendMessage: (
         message: string,
         fileIds?: string[],
-        files?: { id: string; name: string; type: string; url?: string }[]
+        files?: { id: string; name: string; type: string; url?: string }[],
+        options?: { language: string; voice: boolean; responseVoice: boolean }
     ) => void;
     disabled?: boolean;
 }
@@ -55,6 +59,9 @@ const voiceLanguageOptions = [
     { value: 'ml', label: 'ML' },
     { value: 'kn', label: 'KN' },
 ];
+
+const SUPPORTED_UPLOAD_LABEL =
+    'Supported formats: JPG, PNG, GIF, WebP, SVG, PDF, TXT, DOC, DOCX, CSV, HTML, CSS, and common code files.';
 
 // Voice Visualizer — same from AIAssistant.tsx
 const VoiceVisualizer = ({ stream, width, height }: { stream: MediaStream | null; width: number; height: number }) => {
@@ -133,6 +140,19 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
     const [uploading, setUploading] = useState(false);
     const [containerWidth, setContainerWidth] = useState(600);
     const [voiceLanguage, setVoiceLanguage] = useState<'auto' | 'en' | 'ta' | 'hi' | 'te' | 'ml' | 'kn'>('auto');
+    const [responseVoiceEnabled, setResponseVoiceEnabled] = useState(false);
+    const [lastInputWasVoice, setLastInputWasVoice] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const transcriptionToastId = useRef<string | number | null>(null);
+
+    const stopProgressToast = (
+        toastRef: React.MutableRefObject<string | number | null>,
+    ) => {
+        if (toastRef.current !== null) {
+            toast.dismiss(toastRef.current);
+            toastRef.current = null;
+        }
+    };
 
     const inputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -225,24 +245,27 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
     const handleTranscription = async (blob: Blob) => {
         setTranscribing(true);
         try {
+            transcriptionToastId.current = toast.loading('Downloading voice model. Please wait.');
             const file = new File([blob], 'recording.webm', { type: 'audio/webm' });
             const languageHint = voiceLanguage === 'auto' ? getBrowserLanguageHint() : voiceLanguage;
             const result = await api.transcribeAudio(file, languageHint);
             const transcribedText = (result.text || '').trim();
             if (transcribedText) {
                 setInput((prev) => [prev.trim(), transcribedText].filter(Boolean).join(' ').trim());
+                setLastInputWasVoice(true);
                 requestAnimationFrame(() => inputRef.current?.focus());
             }
         } catch (err) {
             console.error('Transcription failed:', err);
+            toast.error(err instanceof Error ? err.message : 'Transcription failed');
         } finally {
+            stopProgressToast(transcriptionToastId);
             setTranscribing(false);
         }
     };
 
     // File upload
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
+    const processFiles = async (files: FileList | File[]) => {
         if (!files?.length) return;
 
         setUploading(true);
@@ -258,14 +281,87 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
             }
         } catch (err) {
             console.error('File upload failed:', err);
+            const message = err instanceof Error ? err.message : 'Upload failed';
+            if (message.toLowerCase().includes('file type not allowed')) {
+                toast.error(`Unsupported file format. ${SUPPORTED_UPLOAD_LABEL}`);
+            } else {
+                toast.error(message);
+            }
         } finally {
             setUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) processFiles(e.target.files);
+    };
+
+    // Global Drag & Drop Handlers
+    useEffect(() => {
+        let dragCounter = 0;
+
+        const handleDragEnter = (e: DragEvent) => {
+            e.preventDefault();
+            dragCounter++;
+            if (e.dataTransfer?.types.includes('Files') && !disabled && !uploading) {
+                setIsDragging(true);
+            }
+        };
+
+        const handleDragLeave = (e: DragEvent) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) {
+                setIsDragging(false);
+            }
+        };
+
+        const handleDragOver = (e: DragEvent) => {
+            e.preventDefault();
+        };
+
+        const handleDrop = (e: DragEvent) => {
+            e.preventDefault();
+            dragCounter = 0;
+            setIsDragging(false);
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0 && !disabled && !uploading) {
+                processFiles(e.dataTransfer.files);
+            }
+        };
+
+        window.addEventListener('dragenter', handleDragEnter);
+        window.addEventListener('dragleave', handleDragLeave);
+        window.addEventListener('dragover', handleDragOver);
+        window.addEventListener('drop', handleDrop);
+
+        return () => {
+            window.removeEventListener('dragenter', handleDragEnter);
+            window.removeEventListener('dragleave', handleDragLeave);
+            window.removeEventListener('dragover', handleDragOver);
+            window.removeEventListener('drop', handleDrop);
+        };
+    }, [disabled, uploading]);
+
     const removeFile = (id: string) => {
         setUploadedFiles(prev => prev.filter(f => f.id !== id));
+    };
+
+    const resolveMessageLanguage = () => {
+        if (voiceLanguage !== 'auto') {
+            return voiceLanguage;
+        }
+
+        const browserHint = getBrowserLanguageHint();
+        if (browserHint) {
+            return browserHint;
+        }
+
+        if (typeof navigator !== 'undefined' && navigator.language) {
+            return navigator.language.split('-')[0].toLowerCase();
+        }
+
+        return 'en';
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -274,9 +370,20 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
         const message = input.trim() || 'Analyze this file';
         const fileIds = uploadedFiles.map(f => f.id);
         const files = [...uploadedFiles];
+        const options = {
+            language: resolveMessageLanguage(),
+            voice: lastInputWasVoice,
+            responseVoice: responseVoiceEnabled,
+        };
         setInput('');
         setUploadedFiles([]);
-        onSendMessage(message, fileIds.length > 0 ? fileIds : undefined, files.length > 0 ? files : undefined);
+        setLastInputWasVoice(false);
+        onSendMessage(
+            message,
+            fileIds.length > 0 ? fileIds : undefined,
+            files.length > 0 ? files : undefined,
+            options,
+        );
     };
 
     // Keyboard shortcut — Alt to speak
@@ -303,7 +410,18 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
     }, [isRecording, disabled, transcribing]);
 
     return (
-        <div className="border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-4 pb-8">
+        <div className="bg-[#212121] p-4 pb-8 relative">
+            {/* Overlay for Drag and Drop */}
+            {isDragging && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm border-2 border-dashed border-blue-500 m-4 rounded-3xl">
+                    <div className="flex flex-col items-center text-blue-400 animate-pulse">
+                        <FileIcon size={48} className="mb-4" />
+                        <h3 className="text-2xl font-bold tracking-tight text-slate-100">Drop files to upload</h3>
+                        <p className="text-sm text-slate-400 mt-2">Attach code, PDFs, or images to the conversation</p>
+                    </div>
+                </div>
+            )}
+
             {/* File preview chips */}
             {uploadedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
@@ -320,33 +438,17 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
             )}
 
             <form onSubmit={handleSubmit}>
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <Globe size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <select
-                            value={voiceLanguage}
-                            onChange={(e) => setVoiceLanguage(e.target.value as typeof voiceLanguage)}
-                            disabled={disabled || transcribing || isRecording}
-                            className="rounded-xl border border-slate-700/50 bg-slate-800 py-2.5 pl-7 pr-2 text-xs text-slate-300 outline-none transition-all hover:bg-slate-700 disabled:opacity-50"
-                            title="Voice language"
-                        >
-                            {voiceLanguageOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
+                <div className="flex items-center w-full bg-[#2f2f2f] border border-transparent rounded-[28px] pl-3 pr-2 py-2 transition-all focus-within:border-white/20">
+                    
                     {/* File upload button */}
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={disabled || uploading}
-                        className="p-2.5 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700/50 transition-all disabled:opacity-50"
+                        className="p-1.5 rounded-full text-slate-400 hover:bg-[#212121] hover:text-slate-200 transition-all disabled:opacity-50 flex-shrink-0"
                         title="Attach file"
                     >
-                        <Paperclip size={18} />
+                        <Plus size={20} weight="bold" />
                     </button>
                     <input
                         ref={fileInputRef}
@@ -357,60 +459,89 @@ export default function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
                         multiple
                     />
 
-                    {/* Voice Button */}
-                    <button
-                        type="button"
-                        onMouseDown={handleMouseDown}
-                        onMouseUp={handleMouseUp}
-                        onTouchStart={handleMouseDown}
-                        onTouchEnd={handleMouseUp}
-                        className={`p-2.5 rounded-xl transition-all ${isRecording
-                            ? 'bg-gradient-to-br from-red-500 to-red-600 text-white scale-110 shadow-lg shadow-red-500/30'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700/50'
-                            }`}
-                        title="Hold to speak (Alt)"
-                        disabled={disabled || transcribing}
-                    >
-                        {transcribing ? (
-                            <Pulse size={18} className="animate-pulse" />
-                        ) : isRecording ? (
-                            <Waveform size={18} weight="bold" />
-                        ) : (
-                            <Microphone size={18} />
-                        )}
-                    </button>
-
                     {/* Input Field */}
-                    <div ref={containerRef} className="flex-1 relative flex items-center overflow-hidden rounded-xl bg-slate-800/80 border border-slate-700/50 transition-all focus-within:ring-2 focus-within:ring-blue-500/30 focus-within:border-blue-500/50">
+                    <div ref={containerRef} className="flex-1 relative flex items-center min-w-0 px-2 h-9">
                         <input
                             ref={inputRef}
                             type="text"
                             value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder={transcribing ? "Transcribing..." : isRecording ? "" : placeholders[placeholderIndex]}
+                            onChange={(e) => {
+                                setInput(e.target.value);
+                                setLastInputWasVoice(false);
+                            }}
+                            placeholder={transcribing ? "Transcribing..." : isRecording ? "" : "Ask anything"}
                             disabled={disabled || transcribing}
-                            className={`w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none disabled:opacity-50 ${isRecording ? 'opacity-0' : 'opacity-100'}`}
+                            className={`w-full bg-transparent text-sm text-slate-200 placeholder-slate-400 focus:outline-none disabled:opacity-50 h-full ${isRecording ? 'opacity-0' : 'opacity-100'}`}
                         />
 
                         {isRecording && (
-                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                                <VoiceVisualizer stream={mediaStream} width={containerWidth - 32} height={36} />
+                            <div className="absolute inset-0 pointer-events-none flex items-center justify-start">
+                                <VoiceVisualizer stream={mediaStream} width={containerWidth - 16} height={32} />
                             </div>
                         )}
                     </div>
 
-                    {/* Send Button */}
-                    <button
-                        type="submit"
-                        disabled={(!input.trim() && uploadedFiles.length === 0) || disabled || transcribing}
-                        className="p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:shadow-none"
-                    >
-                        <PaperPlaneTilt size={18} className="text-white" weight="fill" />
-                    </button>
+                    {/* Submit / Voice Toggle */}
+                    <div className="flex-shrink-0 flex items-center gap-2 pr-1">
+                        {input.trim() || uploadedFiles.length > 0 || uploading || transcribing ? (
+                            <button
+                                type="submit"
+                                disabled={(!input.trim() && uploadedFiles.length === 0) || disabled || transcribing || uploading}
+                                className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-slate-200 transition-all disabled:opacity-40 disabled:hover:bg-white"
+                            >
+                                <ArrowUp size={18} weight="bold" />
+                            </button>
+                        ) : (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setResponseVoiceEnabled((prev) => !prev)}
+                                    disabled={disabled || isRecording || transcribing}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                        responseVoiceEnabled
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-transparent text-slate-300 hover:bg-[#212121] hover:text-white'
+                                    }`}
+                                    title={responseVoiceEnabled ? 'Disable spoken replies' : 'Enable spoken replies'}
+                                >
+                                    {responseVoiceEnabled ? <SpeakerHigh size={16} weight="bold" /> : <SpeakerSlash size={16} weight="bold" />}
+                                </button>
+                                <select
+                                    value={voiceLanguage}
+                                    onChange={(e) => setVoiceLanguage(e.target.value as typeof voiceLanguage)}
+                                    disabled={disabled || isRecording || transcribing}
+                                    className="rounded-full bg-transparent px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-300 outline-none transition-colors hover:text-white disabled:opacity-50"
+                                    title="Voice language"
+                                >
+                                    {voiceLanguageOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onMouseDown={handleMouseDown}
+                                    onMouseUp={handleMouseUp}
+                                    onTouchStart={handleMouseDown}
+                                    onTouchEnd={handleMouseUp}
+                                    disabled={disabled}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                        isRecording
+                                            ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/20'
+                                            : 'bg-white text-black hover:bg-slate-200'
+                                    }`}
+                                    title="Hold to speak (Alt)"
+                                >
+                                    {isRecording ? <Waveform size={16} weight="bold" /> : <Waveform size={16} weight="bold" />}
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
-                <p className="mt-2 text-[10px] text-slate-500 text-center font-mono">
-                    {isRecording ? "🎙️ Listening..." : transcribing ? "✨ Processing..." : uploading ? "📎 Uploading..." : "⌥ Alt to speak • Enter to send • 📎 Attach files"}
+                <p className="mt-2 text-[10px] text-slate-500 text-center font-mono uppercase tracking-widest">
+                    {isRecording ? "🎙️ Listening..." : transcribing ? "✨ Processing..." : uploading ? "📎 Uploading..." : "PolyVerse AI • Llama 3.3"}
                 </p>
             </form>
         </div>
