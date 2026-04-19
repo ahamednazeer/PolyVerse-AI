@@ -99,15 +99,15 @@ docker compose up -d
 
 `docker-compose.yml` is configured for image-based deployment:
 
-- `polyverse-backend:latest`
-- `polyverse-frontend:latest`
+- `ahamednazeer/polyverse-ai:be-latest`
+- `ahamednazeer/polyverse-ai:fe-latest`
 - `mongo:7`
 
 Build those images before starting Compose if they do not already exist:
 
 ```bash
-docker build -t polyverse-backend:latest ./backend
-docker build -t polyverse-frontend:latest ./frontend
+docker build -t ahamednazeer/polyverse-ai:be-latest ./backend
+docker build -t ahamednazeer/polyverse-ai:fe-latest ./frontend
 ```
 
 The Compose file includes backend and frontend environment values directly, so it does not depend on `backend/.env`.

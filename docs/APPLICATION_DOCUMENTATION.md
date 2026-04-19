@@ -1,49 +1,62 @@
-# PolyVerse AI Application Documentation
+# PolyVerse AI Complete Application Documentation
 
-## 1. Purpose
+## 1. Overview
 
-PolyVerse AI is a multi-agent academic and general-purpose AI assistant with a ChatGPT-style interface. It supports:
+PolyVerse AI is a multi-agent conversational application that combines a modern web chat interface with specialized backend agents for education, coding, wellness, vision, multilingual interaction, and general assistance. The application is designed to accept text, files, images, and audio, then route each request through the most appropriate agent or chain of agents before streaming the result back to the user.
 
-- text chat
-- educational question answering
-- code help
-- wellness-oriented responses
-- image understanding
-- document-assisted retrieval
-- multilingual interaction
-- voice transcription
-- lightweight personalization and durable user memory
+The application is built as a full-stack system with:
 
-The system is split into:
+- a Next.js frontend for user interaction
+- a FastAPI backend for orchestration and APIs
+- MongoDB for operational persistence
+- Qdrant for retrieval-augmented document search
+- Groq-hosted models for routing, generation, and image analysis
+- local or container-local ML dependencies for OCR, speech transcription, and wellness inference
 
-- a Next.js frontend for authentication, chat, file upload, and account personalization
-- a FastAPI backend for authentication, routing, agent execution, file ingestion, streaming, and storage
-- MongoDB for users, conversations, messages, file metadata, and memory
-- Qdrant plus sentence-transformers for retrieval-augmented generation
-- Groq-hosted LLMs for routing, generation, and image reasoning
-- local model integrations for Whisper, EasyOCR, and some Hugging Face pipelines
+This document explains the application end to end:
 
-This document explains how the application works end to end, how data is handled, how requests are processed, and what security controls exist today.
+- what the system does
+- how the frontend and backend are structured
+- how user requests move through the system
+- how chat, file, image, voice, memory, and personalization data are handled
+- how each agent works
+- what is stored and where
+- how security works today
+- what important security limitations still exist
 
-## 2. High-Level Architecture
+This document intentionally stays in a single file and does not split testing or operations into separate documents.
+
+## 2. Business Purpose and Product Scope
+
+PolyVerse AI is intended to function as a student-centered AI assistant that can also handle broader conversational tasks. Its current practical scope includes:
+
+- explaining academic concepts
+- answering questions from uploaded documents
+- analyzing diagrams and image-based educational material
+- transcribing spoken questions
+- helping with code debugging and programming explanations
+- responding to multilingual input
+- providing supportive non-clinical wellness responses
+- remembering lightweight user facts and preferences to personalize future responses
+
+The system is not a medical device, not a therapist, and not a secure document vault. It is an AI application with chat-centric workflows and selective persistence.
+
+## 3. Technology Stack
 
 ### Frontend
 
-The frontend is built with Next.js 16 and acts as the user-facing application shell.
-
-Main responsibilities:
-
-- login and registration
-- chat UI
-- streaming response rendering
-- file upload and voice capture
-- conversation list management
-- personalization settings management
-- browser-side voice playback for assistant replies
+- Next.js 16
+- React
+- Tailwind CSS
+- Zustand for conversation list state
+- native `fetch` for API calls
+- browser media APIs for voice capture
+- browser speech synthesis for spoken replies
 
 Key frontend files:
 
 - [frontend/src/app/chat/page.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/app/chat/page.tsx)
+- [frontend/src/app/chat/[id]/page.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/app/chat/[id]/page.tsx)
 - [frontend/src/components/ChatInput.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatInput.tsx)
 - [frontend/src/components/ChatMessages.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatMessages.tsx)
 - [frontend/src/components/ChatLayout.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatLayout.tsx)
@@ -52,346 +65,628 @@ Key frontend files:
 
 ### Backend
 
-The backend is built with FastAPI and owns the application logic.
-
-Main responsibilities:
-
-- JWT authentication
-- cookie and bearer-token auth handling
-- chat orchestration
-- conversation CRUD
-- file upload and transcription
-- agent routing
-- agent execution
-- retrieval-augmented generation
-- personalization and memory injection
-- SSE response streaming
+- FastAPI
+- Motor async MongoDB client
+- Pydantic v2
+- SlowAPI for rate limiting
+- bcrypt for password hashing
+- PyJWT for token handling
 
 Key backend files:
 
 - [backend/app/main.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/main.py)
+- [backend/app/config.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/config.py)
 - [backend/app/api/routes/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/auth.py)
 - [backend/app/api/routes/chat.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/chat.py)
 - [backend/app/api/routes/conversations.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/conversations.py)
 - [backend/app/api/routes/files.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/files.py)
-- [backend/app/agents/router.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/router.py)
-- [backend/app/agents/base_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/base_agent.py)
-
-### Storage and Model Layers
-
-- MongoDB: operational data
-- Qdrant: document embeddings and retrieval
-- Groq API: LLM routing, chat generation, vision reasoning
-- Whisper: speech-to-text
-- EasyOCR: OCR from images
-- sentence-transformers: embeddings for retrieval
-- Hugging Face transformer models: wellness model preload path and sentiment/emotion support
-
-## 3. Main Functional Modules
-
-### 3.1 Authentication
-
-Authentication uses email/password plus JWT issuance.
-
-Flow:
-
-1. User registers or logs in from the frontend.
-2. Backend validates credentials.
-3. Passwords are stored as bcrypt hashes.
-4. Backend issues a JWT access token.
-5. Token is returned in the JSON response and also set as an `HttpOnly` cookie.
-6. Subsequent requests authenticate through either:
-   - `access_token` cookie
-   - `Authorization: Bearer <token>`
-
-Relevant files:
-
-- [backend/app/api/routes/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/auth.py)
 - [backend/app/api/middleware/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/middleware/auth.py)
+- [backend/app/api/middleware/rate_limit.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/middleware/rate_limit.py)
 
-### 3.2 Conversations and Messages
+### Model and Retrieval Layer
 
-Conversations are stored separately from messages.
-
-Each conversation contains:
-
-- owner user id
-- title
-- last active agent type
-- timestamps
-
-Each message contains:
-
-- conversation id
-- role (`user` or `assistant`)
-- content
-- referenced files
-- agent metadata
-- timestamps
-
-Conversation title generation:
-
-- when a new conversation is created by chat, the initial title is derived from the first prompt
-- a background task later asks Groq to generate a short smart title
+- Groq API for chat and vision reasoning
+- Qdrant for vector retrieval
+- sentence-transformers for embeddings
+- EasyOCR for OCR
+- Whisper for speech-to-text
+- Hugging Face transformers pipelines for wellness inference
+- langdetect for multilingual support heuristics
 
 Relevant files:
 
-- [backend/app/api/routes/chat.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/chat.py)
-- [backend/app/api/routes/conversations.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/conversations.py)
-
-### 3.3 File Handling
-
-Users can upload:
-
-- images
-- audio
-- PDFs
-- text and code files
-- Word documents
-
-Upload flow:
-
-1. Frontend sends multipart file data.
-2. Backend validates content type and file size.
-3. File is saved on disk under the configured upload directory.
-4. File metadata is written to MongoDB.
-5. If the file is indexable and the retriever is ready, the backend ingests it into Qdrant.
-
-Relevant file:
-
-- [backend/app/api/routes/files.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/files.py)
-
-### 3.4 Agent System
-
-The backend exposes a router and six main agent types:
-
-- `general`
-- `teaching`
-- `coding`
-- `wellness`
-- `vision`
-- `multilingual`
-
-The router uses:
-
-- crisis keyword detection
-- rule-based fast classification
-- LLM-based fallback classification
-- chain building for multimodal or multilingual cases
-
-Examples of chains:
-
-- image + learning request -> `vision -> teaching`
-- voice + multilingual request -> `vision -> multilingual`
-- voice + coding request -> `vision -> coding`
-
-Relevant files:
-
-- [backend/app/agents/router.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/router.py)
-- [backend/app/agents/base_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/base_agent.py)
-
-### 3.5 Retrieval-Augmented Generation
-
-The teaching pipeline can pull document context from Qdrant.
-
-Retrieval flow:
-
-1. Uploaded documents are chunked.
-2. Each chunk is embedded with `sentence-transformers/all-MiniLM-L6-v2`.
-3. Embeddings are written to a Qdrant collection.
-4. During a teaching request, the retriever searches for top relevant chunks.
-5. Results are reranked with simple keyword overlap.
-6. Context is injected into the teaching prompt.
-7. The agent adds a sources block to the final answer.
-
-Relevant files:
-
+- [backend/app/llm/groq_client.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/llm/groq_client.py)
 - [backend/app/rag/retriever.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/rag/retriever.py)
-- [backend/app/agents/teaching_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/teaching_agent.py)
+- [backend/app/services/model_downloads.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/services/model_downloads.py)
 
-### 3.6 Personalization and Memory
+## 4. System Architecture
 
-The system supports two personalization layers.
+At a high level, the system works like this:
 
-#### Stored Preferences
+1. The user interacts with the frontend.
+2. The frontend authenticates the user and sends chat or file requests to the backend.
+3. The backend validates the request and loads the user context.
+4. The backend resolves any file references and retrieves conversation history.
+5. The router selects one agent or a multi-agent chain.
+6. The selected agent preprocesses the request and may call OCR, transcription, retrieval, or LLMs.
+7. The backend streams the assistant response to the frontend via Server-Sent Events.
+8. The backend stores the final assistant response and updates the conversation.
 
-User profile preferences include:
+### Architectural Components
 
-- preferred language
-- academic level
-- course
-- syllabus topics
-- learning goals
-- response style
+#### 4.1 Frontend Shell
 
-These are stored in the `users` collection and edited from the personalization UI.
+The frontend provides:
 
-#### Durable Lightweight Memory
+- landing, auth, and registration flows
+- chat shell and sidebar
+- conversation list and conversation switching
+- message composer
+- file attachment UI
+- mic recording UI
+- streaming response rendering
+- personalization modal
 
-The system also extracts and stores explicit user facts such as:
+#### 4.2 API Layer
 
-- "remember that ..."
-- "I am studying ..."
-- "I am a second year student"
-- "my goal is ..."
+The FastAPI backend provides:
 
-These are stored in `user_memories` and injected into future prompts.
+- auth endpoints
+- conversation CRUD
+- chat streaming endpoint
+- file upload and transcription endpoints
+- health endpoint
 
-Relevant files:
+#### 4.3 Router Layer
 
-- [backend/app/services/memory.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/services/memory.py)
-- [backend/app/api/routes/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/auth.py)
-- [backend/app/agents/base_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/base_agent.py)
+The router decides how a request should be handled. It can:
 
-## 4. End-to-End Request Flow
+- directly choose a single agent
+- detect crisis content without calling an LLM
+- build agent chains for multimodal flows
 
-## 4.1 User Registration and Login
+#### 4.4 Agent Layer
 
-1. User submits name, email, password, and optional preferences.
-2. Backend checks whether the email already exists.
-3. Backend hashes the password with bcrypt.
-4. Backend inserts the user document into MongoDB.
-5. Backend returns the user profile plus JWT.
-6. JWT is stored client-side in the API client and also set as an `HttpOnly` cookie.
+The agent layer contains the domain logic for:
 
-## 4.2 Starting a New Chat
+- general assistant behavior
+- teaching and RAG
+- code reasoning
+- wellness support
+- vision analysis
+- multilingual interaction
 
-1. User opens the chat page.
-2. Frontend checks authentication with `/api/auth/me`.
-3. When the first message is sent:
-   - frontend shows the user message immediately
-   - frontend calls `/api/chat`
-4. Backend creates a conversation if one does not already exist.
-5. Backend emits an SSE `conversation_id` event.
-6. Frontend binds subsequent messages to that conversation id.
+#### 4.5 Persistence Layer
 
-## 4.3 Sending a Text Message
+MongoDB stores:
 
-1. Frontend sends:
-   - message text
-   - optional conversation id
-   - selected language
-   - voice flags
-   - optional file ids
-2. Backend stores the user message in MongoDB.
-3. Backend persists any explicit memory facts found in the message.
-4. Backend loads the last portion of conversation history.
-5. Backend resolves file metadata.
-6. Backend determines whether the request includes image, voice, or document context.
-7. Router selects the agent or agent chain.
-8. Backend emits an `agent` SSE event.
-9. Backend prepares agent models if needed.
-10. Backend streams content chunks through SSE.
-11. Backend stores the assistant message in MongoDB.
-12. Backend updates the conversation record.
-13. Backend emits a final `done` SSE event.
+- users
+- conversations
+- messages
+- file metadata
+- lightweight durable user memories
 
-## 4.4 Sending a Voice Query
+Qdrant stores:
 
-There are two voice-related flows.
+- embedded document chunks for retrieval
 
-### Voice-to-Text Input Flow
+Disk storage stores:
 
-1. User records audio in the browser.
-2. Frontend uploads the audio to `/api/files/transcribe`.
-3. Backend temporarily writes the audio file.
-4. Whisper transcribes the speech.
-5. For supported Indian languages, the backend uses an IndicBERT-based heuristic to choose the better transcript.
-6. Frontend inserts the transcript into the text input.
-7. User sends the message as normal chat text.
+- uploaded files
+- temporary audio transcription files
+- local model caches
 
-### Voice-Aware Chat Flow
+## 5. Application Startup and Initialization
 
-When the message is marked as voice-originated:
+When the backend starts, [backend/app/main.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/main.py) performs the following:
 
-- the backend may route through `vision` first for audio handling
-- the chat metadata stores `voice` and `response_voice`
-- the frontend can speak the assistant reply using browser speech synthesis
+1. Configures structured logging.
+2. Connects to MongoDB.
+3. Creates the upload directory if needed.
+4. Initializes the agent router.
+5. Attempts to initialize the retriever and Qdrant collection.
+6. Mounts `/uploads` as a static file path.
+7. Registers all API routers.
 
-## 4.5 Sending an Image
+The retriever initialization is best-effort. If its dependencies or backend are unavailable, the application can still run without RAG, though document retrieval features will degrade.
 
-1. User uploads an image.
-2. File is stored and referenced in MongoDB.
-3. During chat, the `vision` agent runs:
-   - OCR using EasyOCR
-   - optional Groq vision model analysis using a base64 image data URL
-4. OCR text and vision analysis are merged into the request context.
-5. The final reasoning can remain in `vision` or chain into another agent such as `teaching`.
+## 6. Configuration Model
 
-## 4.6 Sending a Document
+The application reads its runtime configuration from [backend/app/config.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/config.py).
 
-1. User uploads a PDF, Word doc, text file, or code file.
-2. Backend stores the file and metadata.
-3. If supported, backend extracts text and chunks it.
-4. Chunks are embedded and saved in Qdrant.
-5. During later teaching requests, the retriever searches only matching file ids and user id where available.
-6. Retrieved chunks are appended to the prompt as context.
+Main configuration areas:
 
-## 5. Data Model and Storage
+- Groq API keys and model names
+- OpenAI fallback settings
+- MongoDB URI and database name
+- JWT secret and expiry
+- CORS origins
+- upload directory and max file size
+- Qdrant connection and collection name
+- OCR languages
+- Whisper model
+- IndicBERT model
+- wellness emotion and sentiment models
 
-## 5.1 MongoDB Collections
+The frontend reads `NEXT_PUBLIC_API_URL` and normalizes it in [frontend/src/lib/api.ts](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/lib/api.ts) so it works whether the environment contains `/api` or just the backend base URL.
 
-### `users`
+## 7. User and Authentication Flow
 
-Stores:
+### 7.1 Registration
 
-- name
-- email
-- bcrypt password hash
-- role
-- preferred language
-- preferences object
-- created timestamp
+The registration flow is handled by:
 
-### `conversations`
+- frontend registration page
+- `POST /api/auth/register`
 
-Stores:
+Backend behavior:
 
-- owner user id
-- conversation title
-- last/active agent type
-- created timestamp
-- updated timestamp
+1. Validates the payload using Pydantic models from [backend/app/models/schemas.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/models/schemas.py).
+2. Checks whether the email already exists.
+3. Hashes the password using bcrypt.
+4. Stores the user in MongoDB.
+5. Issues a JWT access token.
+6. Sets that token as an `HttpOnly` cookie.
+7. Returns the token and normalized user data.
 
-### `messages`
+Stored user fields:
 
-Stores:
+- `name`
+- `email`
+- `password_hash`
+- `role`
+- `language`
+- `preferences`
+- `created_at`
 
-- conversation id
-- role
-- text content
-- file references
-- agent name
-- routing and language metadata
+### 7.2 Login
+
+The login flow:
+
+1. User submits email and password.
+2. Backend finds the user by email.
+3. Backend verifies the bcrypt hash.
+4. Backend issues a new JWT.
+5. Backend sets the `HttpOnly` cookie and returns the user profile.
+
+### 7.3 Auth Resolution in Requests
+
+For authenticated requests, [backend/app/api/middleware/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/middleware/auth.py) resolves the current user from:
+
+- `access_token` cookie first
+- bearer token second
+
+If the token is valid:
+
+- the `sub` claim is used as the MongoDB user id
+- the user is loaded from the `users` collection
+
+There is also a special-case demo token path in the middleware. That is a convenience path, not a hardened production feature.
+
+## 8. Frontend Application Flow
+
+### 8.1 Chat Layout and Navigation
+
+[frontend/src/components/ChatLayout.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatLayout.tsx) is the main shell around the chat pages. It is responsible for:
+
+- auth check on chat pages
+- loading conversation list
+- sidebar sizing and collapse behavior
+- conversation selection
+- rename and delete actions
+- user account menu
+- personalization modal
+
+### 8.2 Conversation List State
+
+[frontend/src/store/useChatStore.ts](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/store/useChatStore.ts) holds:
+
+- conversation list
+- active conversation id
+- loading state
+- error state
+
+It also implements optimistic UI behavior for:
+
+- renaming conversations
+- deleting conversations
+
+### 8.3 Chat Composer
+
+[frontend/src/components/ChatInput.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatInput.tsx) handles:
+
+- text input
+- file attachments
+- drag-and-drop upload
+- voice recording
+- transcription submission
+- voice reply toggle
+- message language determination
+
+Message submission behavior:
+
+1. gather text
+2. gather uploaded file ids
+3. gather uploaded file metadata for local UI display
+4. compute language
+5. include whether the message originated from voice
+6. include whether spoken assistant replies are enabled
+7. call the parent `onSendMessage`
+
+### 8.4 Message Rendering
+
+[frontend/src/components/ChatMessages.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatMessages.tsx) renders:
+
+- user bubbles
+- assistant markdown responses
+- code blocks
+- uploaded file previews
+- streaming content
 - timestamps
 
-### `files`
+It also manages:
 
-Stores:
+- initial scroll-to-bottom behavior
+- auto-scroll pause/resume based on user interaction
+- optional browser speech synthesis for assistant replies
 
-- generated file id
-- user id
-- original file name
-- content type
-- size
-- local file path
-- public URL path
-- created timestamp
+## 9. API Surface and Request Contracts
 
-### `user_memories`
+### 9.1 Auth Endpoints
 
-Stores:
+#### `POST /api/auth/register`
 
-- user id
-- memory key
-- memory value
-- memory kind
-- created timestamp
-- updated timestamp
+Purpose:
 
-## 5.2 Indexes
+- create a new user account
 
-The backend creates indexes on startup for:
+Input fields:
+
+- `name`
+- `email`
+- `password`
+- `preferences`
+
+Returns:
+
+- `access_token`
+- `token_type`
+- `user`
+
+#### `POST /api/auth/login`
+
+Purpose:
+
+- authenticate existing user
+
+Input:
+
+- `email`
+- `password`
+
+Returns:
+
+- `access_token`
+- `token_type`
+- `user`
+
+#### `POST /api/auth/logout`
+
+Purpose:
+
+- clear the auth cookie
+
+#### `GET /api/auth/me`
+
+Purpose:
+
+- return the current authenticated user
+
+#### `PUT /api/auth/me/preferences`
+
+Purpose:
+
+- update user personalization data
+
+Updatable fields:
+
+- `preferred_language`
+- `academic_level`
+- `course`
+- `syllabus_topics`
+- `learning_goals`
+- `response_style`
+
+### 9.2 Conversation Endpoints
+
+#### `GET /api/conversations`
+
+Returns:
+
+- paginated list of user-owned conversations
+
+#### `GET /api/conversations/{conversation_id}`
+
+Returns:
+
+- conversation metadata
+- full message list
+
+#### `POST /api/conversations`
+
+Creates:
+
+- a new empty conversation
+
+#### `PUT /api/conversations/{conversation_id}`
+
+Updates:
+
+- currently only title and update timestamp
+
+#### `DELETE /api/conversations/{conversation_id}`
+
+Deletes:
+
+- the conversation
+- all associated messages
+
+### 9.3 Chat Endpoint
+
+#### `POST /api/chat`
+
+This is the central endpoint of the application.
+
+Input model:
+
+- `conversation_id`
+- `message`
+- `files`
+- `voice`
+- `response_voice`
+- `language`
+
+The endpoint responds as a text/event-stream and emits structured SSE events.
+
+Event types:
+
+- `conversation_id`
+- `agent`
+- `content`
+- `status`
+- `done`
+- `error`
+
+### 9.4 File Endpoints
+
+#### `POST /api/files/upload`
+
+Purpose:
+
+- upload a file and create a file reference for later use in chat
+
+Returns:
+
+- `id`
+- `name`
+- `type`
+- `size`
+- `url`
+
+#### `POST /api/files/transcribe`
+
+Purpose:
+
+- upload audio and return transcribed text
+
+Returns:
+
+- `text`
+- `language`
+- `language_hint`
+
+#### `GET /api/files/{file_id}`
+
+Purpose:
+
+- retrieve a stored file by file id
+
+### 9.5 Health Endpoint
+
+#### `GET /api/health`
+
+Purpose:
+
+- basic service liveness response
+
+## 10. Data Models
+
+The Pydantic request and response models live in [backend/app/models/schemas.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/models/schemas.py).
+
+### 10.1 UserPreferences
+
+Fields:
+
+- `preferred_language`
+- `academic_level`
+- `course`
+- `syllabus_topics`
+- `learning_goals`
+- `response_style`
+
+### 10.2 UserCreate
+
+Fields:
+
+- `name`
+- `email`
+- `password`
+- `preferences`
+
+### 10.3 UserResponse
+
+Fields:
+
+- `_id`
+- `name`
+- `email`
+- `role`
+- `language`
+- `preferences`
+- `created_at`
+
+### 10.4 ConversationResponse
+
+Fields:
+
+- `_id`
+- `user_id`
+- `title`
+- `agent_type`
+- `created_at`
+- `updated_at`
+
+### 10.5 MessageResponse
+
+Fields:
+
+- `_id`
+- `conversation_id`
+- `role`
+- `content`
+- `files`
+- `agent`
+- `metadata`
+- `created_at`
+
+### 10.6 ChatRequest
+
+Fields:
+
+- `conversation_id`
+- `message`
+- `files`
+- `voice`
+- `response_voice`
+- `language`
+
+## 11. MongoDB Data Storage
+
+The backend uses MongoDB as its primary system of record.
+
+### 11.1 `users` Collection
+
+Stores account and preference data.
+
+Typical fields:
+
+```json
+{
+  "_id": "ObjectId",
+  "name": "Syed Ahamed",
+  "email": "user@example.com",
+  "password_hash": "bcrypt hash",
+  "role": "user",
+  "language": "en",
+  "preferences": {
+    "preferred_language": "en",
+    "academic_level": "1st year",
+    "course": "B.E CSE",
+    "syllabus_topics": ["arrays", "recursion"],
+    "learning_goals": ["exam prep"],
+    "response_style": "balanced"
+  },
+  "created_at": "UTC datetime"
+}
+```
+
+### 11.2 `conversations` Collection
+
+Stores one record per chat thread.
+
+Typical fields:
+
+```json
+{
+  "_id": "ObjectId",
+  "user_id": "user object id or string form used in app flow",
+  "title": "Explain recursion",
+  "agent_type": "teaching",
+  "created_at": "UTC datetime",
+  "updated_at": "UTC datetime"
+}
+```
+
+### 11.3 `messages` Collection
+
+Stores each user or assistant message.
+
+Typical fields:
+
+```json
+{
+  "_id": "ObjectId",
+  "conversation_id": "conversation id string",
+  "role": "assistant",
+  "content": "Recursive functions call themselves...",
+  "files": [],
+  "agent": "teaching",
+  "metadata": {
+    "reply_to_message_id": "message id",
+    "language": "en",
+    "voice": false,
+    "response_voice": false,
+    "routing": {
+      "agent": "teaching",
+      "chain": ["teaching"],
+      "confidence": 0.9,
+      "reasoning": "Document file attached"
+    }
+  },
+  "created_at": "UTC datetime"
+}
+```
+
+### 11.4 `files` Collection
+
+Stores metadata about uploaded files.
+
+Typical fields:
+
+```json
+{
+  "_id": "uuid string",
+  "user_id": "user id",
+  "name": "chapter1.pdf",
+  "type": "application/pdf",
+  "size": 482123,
+  "path": "./uploads/uuid.pdf",
+  "url": "/uploads/uuid.pdf",
+  "created_at": "UTC datetime"
+}
+```
+
+### 11.5 `user_memories` Collection
+
+Stores durable lightweight user facts.
+
+Typical fields:
+
+```json
+{
+  "_id": "ObjectId",
+  "user_id": "user id",
+  "key": "course",
+  "value": "Data Structures",
+  "kind": "profile",
+  "created_at": "UTC datetime",
+  "updated_at": "UTC datetime"
+}
+```
+
+## 12. MongoDB Indexing
+
+On startup, the backend creates indexes in [backend/app/db/mongodb.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/db/mongodb.py):
 
 - `users.email` unique
 - `conversations.user_id`
@@ -401,428 +696,796 @@ The backend creates indexes on startup for:
 - `user_memories.user_id + key` unique
 - `user_memories.user_id + updated_at`
 
-Source:
+These indexes support:
 
-- [backend/app/db/mongodb.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/db/mongodb.py)
+- account uniqueness
+- fast conversation listing
+- chronological message retrieval
+- stable memory upsert behavior
 
-## 5.3 File Storage
+## 13. File Storage and File Lifecycle
 
-Uploaded files are saved to the configured upload directory on disk. MongoDB stores only metadata and the resolved server path.
+### 13.1 File Types Accepted
 
-Important implication:
+Allowed file types in [backend/app/api/routes/files.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/files.py) include:
 
-- message history and file metadata survive as long as MongoDB survives
-- actual file contents depend on the upload directory remaining intact
+- JPEG
+- PNG
+- GIF
+- WebP
+- SVG
+- WebM/WAV/MP3/MPEG/OGG audio
+- PDF
+- plain text
+- HTML
+- CSS
+- CSV
+- DOC
+- DOCX
 
-## 5.4 Vector Storage
+Certain code files are also allowed by extension even if MIME detection is not explicit.
 
-Qdrant stores:
+### 13.2 Upload Validation
 
-- chunk embeddings
-- chunk text
-- source label
-- per-file metadata such as file id and user id
+The backend checks:
 
-This is used only for retrieval, not as the system of record for conversations.
+- MIME type or accepted extension
+- max file size using the configured size limit
 
-## 6. Processing Pipelines
+### 13.3 Save Path
 
-## 6.1 Router Pipeline
+Uploaded files are written to the configured `UPLOAD_DIR`.
 
-The router follows this sequence:
+Steps:
 
-1. crisis regex check
-2. rule-based fast path:
-   - images
-   - audio
-   - documents
-   - code blocks
-   - Indic scripts
-   - greetings
-3. Groq fast-model classifier fallback
-4. chain construction for multimodal requests
+1. generate UUID
+2. preserve extension
+3. write bytes to disk
+4. insert file metadata into MongoDB
+5. return a file reference to the frontend
 
-This design reduces cost and latency for obvious cases.
+### 13.4 File Use in Chat
 
-## 6.2 Base Agent Pipeline
+When the user sends a chat message with attached file ids:
 
-All agents inherit a common contract.
+1. frontend includes `files: [file_id, ...]`
+2. backend loads matching file docs
+3. backend builds file references
+4. file refs are attached to the message history and agent input
 
-Execution flow:
+### 13.5 File Rendering in Frontend
 
-1. personalization context injection
-2. attached file context injection
-3. optional `preprocess`
-4. `process` or `stream`
-5. optional `postprocess`
-6. metrics recording
-7. retries and timeout handling on failure
+The frontend:
 
-The base agent also:
+- shows chips for attached files before send
+- renders thumbnails for image attachments in user messages
+- resolves file URLs using `api.getUploadUrl`
 
-- handles streaming and non-streaming paths
-- records latency and request counts
-- implements retry logic with backoff
+## 14. Vector Retrieval and RAG
 
-## 6.3 Teaching Pipeline
+### 14.1 Qdrant Initialization
 
-1. retrieve relevant context from Qdrant
-2. rerank by relevance plus keyword overlap
-3. infer difficulty level from the request
-4. merge personalization context
-5. build Groq prompt
-6. generate answer
-7. append normalized sources block
+[backend/app/rag/retriever.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/rag/retriever.py) initializes:
 
-## 6.4 Vision Pipeline
+- sentence-transformer embedder
+- Qdrant client
+- collection existence and vector dimension
 
-1. inspect attached files
-2. for images:
-   - run OCR with EasyOCR
-   - base64-encode image
-   - call Groq vision model
-3. for audio:
-   - run Whisper STT
-4. merge OCR, STT, and vision analysis into one enhanced prompt
-5. call Groq text model for final answer or forward into another agent
+If `QDRANT_URL` is not set, the retriever can run with a local on-disk Qdrant path.
 
-## 6.5 Voice Transcription Pipeline
+### 14.2 Document Ingestion
 
-1. frontend records `audio/webm`
-2. backend writes temporary file
-3. Whisper transcribes
-4. backend optionally forces selected language and compares transcript quality
-5. frontend receives transcript and places it into the text input
+Supported ingestion paths include:
 
-## 7. Frontend Runtime Behavior
+- PDF via `pypdf`
+- DOC/DOCX via `python-docx`
+- text and code files via standard file reading
 
-## 7.1 Chat State
+Process:
 
-The frontend stores:
+1. extract text
+2. chunk text by word window
+3. attach metadata such as source, page, chunk index, file id, user id
+4. compute embeddings
+5. upsert into Qdrant
 
-- conversation list in Zustand
-- current active conversation id
-- current streaming content in React state
-- upload state
-- recording state
-- personalization form state
+### 14.3 Retrieval Flow
 
-Conversation list operations include:
+The teaching agent performs:
 
-- fetch
-- optimistic rename
-- optimistic delete
+1. semantic search in Qdrant
+2. optional file-id filtering
+3. optional user-id filtering
+4. relevance reranking by overlap
+5. context assembly
+6. source citation construction
 
-Source:
+## 15. Durable Memory and Personalization
 
-- [frontend/src/store/useChatStore.ts](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/store/useChatStore.ts)
+### 15.1 Stored Preferences
 
-## 7.2 Streaming UX
+Preferences are user-owned profile data edited from the UI and stored inside the user record.
 
-The frontend consumes SSE events with types such as:
+These preferences are used to influence future prompts. Example impacts:
 
-- `conversation_id`
-- `agent`
-- `content`
-- `status`
-- `done`
-- `error`
+- preferred language influences response style
+- academic level changes explanation complexity
+- course and syllabus topics make educational answers more targeted
+- learning goals bias the response objective
+- response style adjusts answer tone and density
 
-Effects:
+### 15.2 Durable Lightweight Memory
 
-- agent badge updates immediately
-- streamed content is appended incrementally
-- loading toasts are shown when models are being prepared or downloaded
-- final message is committed when the `done` event arrives
+[backend/app/services/memory.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/services/memory.py) stores lightweight facts extracted from user text.
 
-Source:
+Patterns include:
 
-- [frontend/src/app/chat/page.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/app/chat/page.tsx)
-- [frontend/src/lib/api.ts](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/lib/api.ts)
+- `remember that ...`
+- `my name is ...`
+- `I am studying ...`
+- `I am a ... student`
+- `my goal is ...`
 
-## 7.3 Personalization UX
+These are stored as normalized key-value records and later converted into plain-text personalization context.
 
-The account menu opens a personalization modal where the user can edit:
+### 15.3 Prompt Injection of User Context
+
+[backend/app/agents/base_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/base_agent.py) injects this personalization before processing:
+
+- saved preferences
+- saved user memories
+
+This means later responses can reference:
 
 - preferred language
+- course context
 - academic level
-- course
-- syllabus topics
-- learning goals
-- response style
+- remembered goals
 
-These values are sent to `PUT /api/auth/me/preferences`.
+without the user repeating them in every message.
 
-Source:
+## 16. Chat End-to-End Flow
 
-- [frontend/src/components/ChatLayout.tsx](/Users/syed.ahamed/skillup/PolyVerse-AI/frontend/src/components/ChatLayout.tsx)
+The core chat flow lives in [backend/app/api/routes/chat.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/chat.py).
 
-## 8. Security Model
+### 16.1 New Conversation Flow
 
-This section describes the security posture as implemented today, not an idealized design.
+If the request does not contain `conversation_id`:
 
-## 8.1 Controls Already Implemented
+1. backend inserts a conversation document
+2. backend emits `conversation_id` SSE event
+3. frontend stores that id
+4. backend asynchronously generates a smarter title later using Groq
 
-### Password Hashing
+### 16.2 User Message Persistence
 
-- passwords are hashed with bcrypt before storage
-- plaintext passwords are not stored
+Before agent execution:
 
-Source:
+1. backend resolves attached files
+2. backend stores the user message in MongoDB
+3. backend persists any explicit memory facts
+4. backend loads recent message history
 
-- [backend/app/api/middleware/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/middleware/auth.py)
+### 16.3 Routing Inputs
 
-### JWT-Based Authentication
+The router receives:
 
-- access tokens include `sub`, `email`, `iat`, and `exp`
-- token expiry is enforced during decode
+- the text message
+- whether the request has images
+- whether it has voice/audio
+- whether it has documents
 
-### HttpOnly Cookie Support
+### 16.4 Agent Input Construction
 
-- login and register set `access_token` as an `HttpOnly` cookie
-- this reduces direct JavaScript access to the cookie
+The backend constructs an `AgentInput` object containing:
 
-### Conversation Ownership Checks
+- message
+- conversation history
+- file refs
+- metadata
+- language
+- user id
+- conversation id
 
-Conversation routes check that the conversation belongs to the authenticated user before:
+It then enriches metadata with:
 
-- read
-- update
-- delete
+- user preferences
+- remembered user facts
+- personalization context string
+- voice flags
+- crisis state
 
-### Unique User Identity Constraint
+### 16.5 Model Preparation and Warmup Status
 
-- `users.email` is unique
+Before execution, the backend may:
 
-### Basic Rate Limiting
+- emit `loading_model` status events
+- preload Whisper
+- preload wellness Hugging Face models
 
-- application uses `slowapi`
-- default limit is `60/minute`
+These status events drive frontend toasts.
 
-### CORS Restrictions
+### 16.6 Streaming Response
 
-- cross-origin requests are limited to configured origins
+Single-agent path:
 
-## 8.2 Important Security Limitations and Risks
+1. agent preprocesses input
+2. agent streams chunks
+3. backend forwards each chunk as SSE `content`
 
-These are important to document because they materially affect how secure the system currently is.
+Chain path:
 
-### 1. Default Secrets Are Unsafe for Production
+1. backend prepares each chain agent
+2. backend invokes agents in order
+3. previous output becomes context for the next agent
+4. final output is tokenized and streamed back
 
-The configuration still ships with a default JWT secret:
+### 16.7 Assistant Message Persistence
+
+After generation:
+
+1. backend stores assistant message
+2. backend stores routing metadata
+3. backend updates conversation `updated_at`
+4. backend updates `agent_type`
+5. backend emits `done`
+
+## 17. Routing and Orchestration Logic
+
+The router implementation is in [backend/app/agents/router.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/router.py).
+
+### 17.1 Rule Priority
+
+The router prioritizes:
+
+1. crisis detection
+2. image attachment detection
+3. audio attachment detection
+4. document attachment detection
+5. code block detection
+6. Indic or non-Latin heavy script detection
+7. greeting detection
+8. LLM fallback classification
+
+### 17.2 Crisis Handling
+
+Crisis pattern detection is regex-based and intentionally bypasses the LLM so severe wellness routing does not depend on model interpretation.
+
+### 17.3 LLM Classification
+
+If no rule resolves the request confidently:
+
+- the router asks the Groq fast model to classify intent
+- expected result is one of the six agent names plus confidence and reason
+
+### 17.4 Chain Construction
+
+The router can transform a primary decision into a chain:
+
+- image + multilingual -> `vision -> multilingual`
+- image + teaching -> `vision -> teaching`
+- voice + multilingual -> `vision -> multilingual`
+- voice + teaching/coding/wellness -> `vision -> target`
+- document + multilingual -> `teaching -> multilingual`
+
+## 18. Base Agent Contract
+
+[backend/app/agents/base_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/base_agent.py) defines the execution contract for all agents.
+
+### 18.1 Standard Input
+
+Each agent receives:
+
+- `message`
+- `history`
+- `files`
+- `metadata`
+- `language`
+- `user_id`
+- `conversation_id`
+
+### 18.2 Standard Output
+
+Each agent returns:
+
+- `content`
+- `agent_name`
+- `confidence`
+- `metadata`
+- optional citations
+- token counts and latency
+
+### 18.3 Shared Behaviors
+
+The base class provides:
+
+- personalization context injection
+- attached-file content injection
+- retry logic
+- timeout handling
+- metrics tracking
+- standard streaming and non-streaming entrypoints
+
+### 18.4 Attached File Context Injection
+
+Before an agent processes a request, the base class tries:
+
+1. retrieval from Qdrant using attached file ids and user id
+2. direct file parsing fallback
+
+This means document content can become part of the agent prompt even outside the teaching agent, when appropriate.
+
+## 19. Agent-Specific Processing
+
+## 19.1 General Agent
+
+File:
+
+- [backend/app/agents/general_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/general_agent.py)
+
+Purpose:
+
+- handle ordinary conversation and uncategorized questions
+
+Behavior:
+
+- uses the general system prompt
+- forwards history and message to Groq
+- supports streaming and non-streaming replies
+
+## 19.2 Teaching Agent
+
+File:
+
+- [backend/app/agents/teaching_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/teaching_agent.py)
+
+Purpose:
+
+- educational explanations
+- exam-focused responses
+- document-grounded answers
+
+Behavior:
+
+- retrieves context from Qdrant
+- reranks by overlap
+- detects difficulty level
+- includes personalization such as academic level and syllabus topics
+- constructs citation-aware prompts
+- appends a final sources section
+
+Difficulty modes inferred from text:
+
+- beginner
+- intermediate
+- advanced
+- exam_prep
+
+## 19.3 Coding Agent
+
+File:
+
+- [backend/app/agents/coding_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/coding_agent.py)
+
+Purpose:
+
+- code explanation
+- bug diagnosis
+- code improvement
+- algorithm reasoning
+
+Behavior:
+
+- extracts fenced code blocks
+- detects probable programming language
+- detects error patterns such as syntax or runtime problems
+- estimates code complexity
+- builds a structured prompt for Groq coding model
+- requests root-cause-first explanations and runnable output
+
+Detected analysis metadata includes:
+
+- detected language
+- whether errors are likely present
+- error categories
+- number of code blocks
+- complexity hint
+
+## 19.4 Wellness Agent
+
+File:
+
+- [backend/app/agents/wellness_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/wellness_agent.py)
+
+Purpose:
+
+- supportive mental wellness conversations
+- basic emotional support
+- crisis escalation messaging
+
+Behavior:
+
+- runs a safety assessment before generation
+- detects risk level using critical, high, and moderate regexes
+- uses lexicon plus optional transformer pipelines for emotion and sentiment
+- can preload transformer models
+- bypasses the LLM completely for critical crisis responses
+- prepends a high-risk professional-support notice when needed
+
+Risk levels:
+
+- `none`
+- `low`
+- `moderate`
+- `high`
+- `critical`
+
+Important limit:
+
+- it is not a clinical system
+- it does not diagnose or prescribe
+
+## 19.5 Vision Agent
+
+File:
+
+- [backend/app/agents/vision_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/vision_agent.py)
+
+Purpose:
+
+- analyze images
+- perform OCR
+- transcribe audio
+- create multimodal context for downstream agents
+
+Behavior:
+
+- lazy-loads EasyOCR
+- lazy-loads Whisper
+- extracts OCR text from images
+- transcribes audio files
+- base64-encodes images for Groq vision model
+- creates a merged context block containing OCR, transcription, and vision analysis
+
+It can operate as:
+
+- final answering agent
+- preprocessing agent for another chain target
+
+## 19.6 Multilingual Agent
+
+File:
+
+- [backend/app/agents/multilingual_agent.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/agents/multilingual_agent.py)
+
+Purpose:
+
+- language-aware responses
+- translation assistance
+- code-switching support
+
+Behavior:
+
+- detects scripts via Unicode ranges
+- uses `langdetect` as statistical fallback
+- detects all likely languages present
+- detects explicit translation intent
+- adapts the response language to the user’s language
+- can include romanization hints for non-Latin outputs
+
+Supported language naming covers:
+
+- English
+- Hindi
+- Tamil
+- Telugu
+- Kannada
+- Malayalam
+- Bengali
+- Marathi
+- Gujarati
+- Punjabi
+- Urdu
+- Arabic
+- and several global languages
+
+## 20. Voice Processing Flow
+
+Voice interaction has two distinct layers.
+
+### 20.1 Frontend Audio Capture
+
+The browser:
+
+- requests microphone permission
+- records audio with `MediaRecorder`
+- collects chunks as `audio/webm`
+- stops and creates a `File`
+
+### 20.2 Backend Transcription
+
+[backend/app/api/routes/files.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/files.py) handles transcription:
+
+1. validates audio MIME type
+2. writes a temporary file
+3. loads Whisper
+4. transcribes automatically
+5. optionally forces the user-selected language
+6. for supported Indic languages, compares outputs using an IndicBERT-based heuristic
+7. returns normalized text
+
+### 20.3 Voice-Aware Chat
+
+After transcription:
+
+- frontend inserts text into the input field
+- if the user sends it, the request includes `voice: true`
+- the backend can route through `vision` first when voice/audio semantics matter
+
+### 20.4 Spoken Assistant Reply
+
+If enabled in the UI:
+
+- frontend uses browser speech synthesis to read assistant replies aloud
+
+This is frontend speech output, not backend TTS generation.
+
+## 21. Image Processing Flow
+
+When an image is attached:
+
+1. frontend uploads the image and receives a file reference
+2. user submits chat with that file id
+3. backend resolves the file metadata and local path
+4. router recognizes `has_image`
+5. vision agent preprocesses the file
+6. OCR runs through EasyOCR
+7. image is encoded and sent to Groq vision model
+8. OCR and vision text are merged with the user prompt
+9. result is answered directly or forwarded to another agent
+
+Example:
+
+- uploaded biology diagram + “Explain this for exam preparation”
+- router chain becomes `vision -> teaching`
+- vision extracts content
+- teaching converts it into an educational explanation
+
+## 22. Document Processing Flow
+
+When a document is uploaded:
+
+1. backend writes the file to disk
+2. backend stores metadata
+3. backend attempts best-effort ingestion into Qdrant
+4. later teaching requests can retrieve relevant chunks
+5. attached-file retrieval can also augment prompts in the base agent layer
+
+The application therefore supports both:
+
+- explicit document Q&A through the teaching path
+- file-context augmentation in other agent flows
+
+## 23. SSE Streaming Flow
+
+The frontend does not wait for a single final JSON chat response. Instead, it consumes SSE.
+
+### 23.1 Event Sequence
+
+Typical stream order:
+
+1. `conversation_id` if the chat is new
+2. `agent` when routing decision is made
+3. `status` while models warm up
+4. repeated `content` chunks during generation
+5. `done` on completion
+
+Error path:
+
+- `error`
+
+### 23.2 Frontend Reaction
+
+The frontend:
+
+- immediately shows the user message
+- updates the active agent indicator
+- appends streamed content in real time
+- shows loading toasts for model download/warmup
+- converts the final stream into a stored assistant message in local state
+
+## 24. Privacy and Data Handling
+
+### 24.1 Data Collected
+
+The application can collect and store:
+
+- user name
+- user email
+- password hash
+- chat messages
+- uploaded files
+- file metadata
+- user preferences
+- durable user memory facts
+- conversation metadata
+
+### 24.2 Data Stored in MongoDB
+
+Persisted in MongoDB:
+
+- accounts
+- conversations
+- messages
+- file metadata
+- memory records
+
+### 24.3 Data Stored on Disk
+
+Persisted on disk:
+
+- uploaded file bytes
+- temporary transcription files during processing
+- ML model caches
+- local Qdrant storage if local mode is used
+
+### 24.4 Data Sent to External Services
+
+Depending on the request, content may be sent to Groq:
+
+- message text
+- conversation history
+- OCR results
+- transcribed audio text
+- attached file context
+- retrieved document context
+- personalization context
+- image content in base64 URL form for vision requests
+
+### 24.5 Data Reuse in Future Responses
+
+User data can influence future outputs through:
+
+- stored preferences
+- stored memories
+- previous messages in a conversation
+- document chunks stored in retrieval index
+
+### 24.6 Data Minimization Reality
+
+The system does not currently implement strict minimization beyond practical relevance-based prompt assembly. If user context is available and relevant, it may be included in prompt context.
+
+## 25. Security Controls Implemented
+
+The following controls exist in the current codebase.
+
+### 25.1 Password Hashing
+
+- bcrypt hashes are stored instead of plaintext passwords
+
+### 25.2 JWT Expiry
+
+- tokens include expiry timestamps
+- invalid or expired tokens are rejected
+
+### 25.3 HttpOnly Cookie Support
+
+- auth tokens are set as `HttpOnly` cookies
+
+### 25.4 Conversation Ownership Checks
+
+- conversation get, update, and delete endpoints verify the conversation belongs to the authenticated user
+
+### 25.5 Unique Email Constraint
+
+- duplicate account registration is prevented by a unique index
+
+### 25.6 Rate Limiting
+
+- SlowAPI applies a default limit of `60/minute`
+
+### 25.7 CORS Configuration
+
+- allowed origins are limited by configuration
+
+### 26.1 Default JWT Secret Is Unsafe Until Changed
+
+The default config still ships with:
 
 - `JWT_SECRET = "change-this-in-production"`
 
-If deployed with that unchanged, token forgery risk is severe.
+This must be changed in real deployments.
 
-Source:
+### 26.3 File Authorization Is Incomplete
 
-- [backend/app/config.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/config.py)
+There are two separate concerns:
 
-### 2. Demo Token Bypass Exists
+- `GET /api/files/{file_id}` does not enforce ownership before serving the file
+- the chat route resolves attached file ids without checking that each file belongs to the current user
 
-The auth middleware accepts the literal token `demo-token` and returns a synthetic user.
+This means file-level authorization is weaker than conversation-level authorization.
 
-That is useful for demos, but it is not appropriate for production unless explicitly isolated.
+### 26.4 Uploaded Files Are Served from a Static Mount
 
-Source:
+The application mounts `/uploads` publicly through FastAPI static files. That means the file path itself can become a direct access path if discovered.
 
-- [backend/app/api/middleware/auth.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/middleware/auth.py)
 
-### 3. Uploaded Files Are Mounted as Static Public Files
-
-The backend mounts the upload directory as static files at `/uploads`.
-
-That means files are effectively public by path once the filename is known, unless protected elsewhere.
-
-Source:
-
-- [backend/app/main.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/main.py)
-
-### 4. File Access Control Is Incomplete
-
-The dedicated file fetch route does not verify file ownership, and the chat route resolves attached files by file id without checking that the file belongs to the current user.
-
-That means there is a risk of cross-user file reference if an attacker can obtain another file id.
-
-Sources:
-
-- [backend/app/api/routes/files.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/files.py)
-- [backend/app/api/routes/chat.py](/Users/syed.ahamed/skillup/PolyVerse-AI/backend/app/api/routes/chat.py)
-
-### 5. No CSRF Protection Layer Is Present
-
-Because the application supports cookie-based auth and `allow_credentials=True`, production deployments should have explicit CSRF protection if cookies are relied on for browser auth.
-
-Current code does not implement a CSRF token or same-origin mutation guard.
-
-### 6. No At-Rest Encryption Layer Is Implemented in App Code
+### 26.6 No App-Level Encryption at Rest
 
 The application does not encrypt:
 
-- MongoDB records at application level
-- uploaded files at application level
-- Qdrant payloads at application level
+- MongoDB records
+- uploaded files
+- vector-store payloads
 
-Security at rest depends on infrastructure choices outside the app.
+Any at-rest protection depends on infrastructure outside the application.
 
-### 7. No Role-Based Authorization Beyond Basic User Identity
+### 26.7 No Malware or Deep Content Scanning
 
-The current app has a `role` field but does not implement meaningful role-based access control paths.
-
-### 8. Input Validation Is Basic, Not Hardened
-
-Pydantic validates request shapes and file type allowlists exist, but the system does not currently include:
+Uploaded files are validated by type and size only. The app does not currently perform:
 
 - antivirus scanning
-- content disarm
-- deep MIME inspection
-- prompt injection defenses for uploaded document content
+- document sanitization
+- macro stripping
+- advanced file inspection
 
-### 9. Logging May Expose Operational Detail
+### 26.8 Prompt Injection Exposure via User Files
 
-The app runs in debug-friendly mode by default and uses fairly verbose logging. This is useful during development but should be tightened for production.
+Document text and retrieved chunks can be appended into prompt context. The system does not currently implement strong prompt-injection neutralization for untrusted uploaded content.
 
-## 8.3 Security Posture Summary
+### 26.9 Role Field Exists but RBAC Does Not
 
-Current posture is suitable for development, demos, and controlled internal testing, but it is not fully hardened for a public production deployment.
+Users have a `role` field, but the application does not implement a substantial role-based authorization model.
 
-Strengths:
+### 26.10 Hardcoded Secrets Risk
 
-- bcrypt password hashing
-- JWT expiry handling
-- conversation ownership checks
-- basic rate limiting
-- origin-controlled CORS
+If deployment files contain direct API keys or secrets, that becomes a release and operational security problem even though it is outside normal runtime logic.
 
-Main gaps to fix before serious production use:
+## 27. Reliability Characteristics
 
-- remove demo-token bypass
-- replace default JWT secret
-- enforce file ownership on all file access paths
-- stop serving uploads as public static assets or sign access
-- add CSRF protection if cookie auth is used in browser flows
-- tighten logging and debug defaults
-- add malware scanning and stricter upload validation
+The application includes several reliability-oriented behaviors.
 
-## 9. Data Privacy and Handling Summary
+### 27.1 Retry Logic
 
-### User Data Collected
+Agents retry failed processing with exponential backoff.
 
-- name
-- email
-- hashed password
-- chat messages
-- uploaded files
-- conversation metadata
-- preferences
-- explicit memory facts derived from user statements
+### 27.2 Timeouts
 
-### How Data Is Used
+Agents have per-agent timeout values.
 
-- authentication and account access
-- chat history continuity
-- personalization of responses
-- retrieval from uploaded documents
-- multimodal processing for images and voice
 
-### How Data Flows to Models
+### 27.4 User-Facing Status Feedback
 
-Depending on the request, the following may be sent into model context:
+During model warmup or download:
 
-- user message
-- recent conversation history
-- attached-file text
-- OCR text
-- speech transcription
-- retrieved document chunks
-- stored preferences
-- lightweight user memories
+- backend emits status events
+- frontend shows status toasts
 
-Important implication:
+### 27.5 Streaming UX
 
-Model context can contain personal or uploaded data if that data is relevant to the request.
+Streaming reduces perceived wait time and gives users visible progress during generation.
 
-## 10. Reliability and Operational Behavior
 
-### Startup Behavior
+## 29. End-to-End Summary
 
-On backend startup:
+PolyVerse AI operates as a layered conversational system:
 
-- logging is configured
-- MongoDB connects
-- upload directory is created
-- agent router is initialized
-- retriever initialization is attempted
+1. the frontend captures user input, files, and voice
+2. the backend authenticates the user and persists the request
+3. routing logic chooses the best agent path
+4. agents preprocess the request using retrieval, OCR, transcription, or language analysis
+5. Groq and local models produce the final answer
+6. the answer streams back over SSE
+7. the assistant response is stored for future conversation continuity
+8. personalization and durable memory shape future replies
 
-### Failure Handling
+In practical terms, the application already behaves as:
 
-- agent invoke path retries failures with exponential backoff
-- timeouts are enforced per agent
-- chat stream returns SSE error payloads on failure
-- document indexing is best-effort and does not block upload success
+- a multi-agent chat platform
+- a document-assisted educational tool
+- a multimodal diagram and image explainer
+- a code helper
+- a multilingual assistant
+- a lightweight personalized AI companion
 
-### Performance-Oriented Choices
-
-- fast-path routing avoids unnecessary LLM calls
-- streaming reduces perceived latency
-- model warmup notices improve UX during first-time downloads
-- conversation lists use indexes and pagination
-
-## 11. API Surface Summary
-
-Core endpoints:
-
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `PUT /api/auth/me/preferences`
-- `POST /api/chat`
-- `GET /api/conversations`
-- `GET /api/conversations/{id}`
-- `POST /api/conversations`
-- `PUT /api/conversations/{id}`
-- `DELETE /api/conversations/{id}`
-- `POST /api/files/upload`
-- `POST /api/files/transcribe`
-- `GET /api/files/{file_id}`
-- `GET /api/health`
-
-## 12. Current Functional Scope
-
-Implemented well enough to demonstrate:
-
-- multi-agent chat
-- retrieval-assisted teaching
-- image OCR and vision analysis
-- voice transcription
-- multilingual routing
-- personalization
-- durable lightweight memory
-- SSE streaming responses
-
-Not fully mature or production-hardened yet:
-
-- file authorization
-- full security hardening
-- advanced long-term memory
-- true live camera streaming
-- strong production governance and compliance controls
-
-## 13. Suggested Use of This Document
-
-This file can be used as:
-
-- project documentation
-- internal architecture reference
-- viva or presentation support material
-- base material for a system design or SRS document
-
-If needed, this can be expanded further into separate documents for:
-
-- API documentation
-- database schema documentation
-- security hardening guide
-- testing and QA plan
-- admin or operations manual
+At the same time, the real current system must still be understood as a development-to-early-production application, because file authorization and general security hardening are not yet complete.
