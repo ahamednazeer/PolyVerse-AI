@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = RAW_API_URL.replace(/\/+$/, '').replace(/\/api$/, '');
+const API_PREFIX = `${API_BASE_URL}/api`;
 
 export interface UserPreferences {
     preferred_language: string;
@@ -35,7 +37,7 @@ class ApiClient {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${API_URL}/api${endpoint}`, {
+        const response = await fetch(`${API_PREFIX}${endpoint}`, {
             ...options,
             headers,
             credentials: 'include',
@@ -148,7 +150,7 @@ class ApiClient {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${API_URL}/api/chat`, {
+        const response = await fetch(`${API_PREFIX}/chat`, {
             method: 'POST',
             headers,
             credentials: 'include',
@@ -216,7 +218,7 @@ class ApiClient {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch(`${API_URL}/api/files/upload`, {
+        const response = await fetch(`${API_PREFIX}/files/upload`, {
             method: 'POST',
             headers,
             credentials: 'include',
@@ -244,7 +246,7 @@ class ApiClient {
             formData.append('language', language);
         }
 
-        const response = await fetch(`${API_URL}/api/files/transcribe`, {
+        const response = await fetch(`${API_PREFIX}/files/transcribe`, {
             method: 'POST',
             headers,
             credentials: 'include',
@@ -260,11 +262,11 @@ class ApiClient {
     }
 
     getFileUrl(fileId: string) {
-        return `${API_URL}/api/files/${fileId}`;
+        return `${API_PREFIX}/files/${fileId}`;
     }
 
     getUploadUrl(path: string) {
-        return `${API_URL}${path}`;
+        return `${API_BASE_URL}${path}`;
     }
 }
 
